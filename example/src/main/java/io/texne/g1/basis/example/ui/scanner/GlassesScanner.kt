@@ -43,7 +43,9 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(glasses.name)
+        Column {
+            Text(glasses.name)
+        }
         Spacer(modifier = Modifier.weight(1f))
         if(glasses.connectionState == G1Glasses.CONNECTING || glasses.connectionState == G1Glasses.DISCONNECTING) {
             CircularProgressIndicator(

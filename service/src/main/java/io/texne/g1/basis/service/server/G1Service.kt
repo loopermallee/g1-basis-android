@@ -1,9 +1,15 @@
 package io.texne.g1.basis.service.server
 
+import io.texne.g1.basis.service.R
 import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -71,7 +77,6 @@ class G1Service: Service() {
     }
 
     // internal state ------------------------------------------------------------------------------
-
 
     internal data class InternalGlasses(
         val connectionState: G1.ConnectionState,
@@ -191,6 +196,41 @@ class G1Service: Service() {
 
     // internal service mechanism ------------------------------------------------------------------
 
+    override fun onCreate() {
+        super.onCreate()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val G1_SERVICE_NOTIFICATION_CHANNEL_ID: String = "0xC0FFEE"
+            val G1_SERVICE_NOTIFICATION_ID: Int = 0xC0FFEE
+
+            val notificationChannel = NotificationChannel(
+                G1_SERVICE_NOTIFICATION_CHANNEL_ID,
+                getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_MIN
+            )
+            notificationChannel.description = getString(R.string.notification_channel_description)
+            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(notificationChannel)
+
+            val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_service)
+                .setContentTitle(getString(R.string.notification_channel_name))
+                .setContentText(getString(R.string.notification_text))
+                .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, G1Service::class.java),
+                    PendingIntent.FLAG_IMMUTABLE))
+                .build()
+
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    G1_SERVICE_NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
+            }
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         return START_STICKY
     }
@@ -203,7 +243,11 @@ class G1Service: Service() {
 
     companion object {
         fun start(context: Context) {
-            context.startService(Intent(context, G1Service::class.java))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(Intent(context, G1Service::class.java))
+            } else {
+                context.startService(Intent(context, G1Service::class.java))
+            }
         }
     }
 }
