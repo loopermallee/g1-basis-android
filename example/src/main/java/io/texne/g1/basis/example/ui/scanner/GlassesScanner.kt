@@ -1,6 +1,5 @@
 package io.texne.g1.basis.example.ui.scanner
 
-import android.util.Log
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
@@ -43,8 +43,11 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(-4.dp)
+        ) {
             Text(glasses.name)
+            Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
         }
         Spacer(modifier = Modifier.weight(1f))
         if(glasses.connectionState == G1Glasses.CONNECTING || glasses.connectionState == G1Glasses.DISCONNECTING) {

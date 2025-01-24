@@ -11,6 +11,5 @@ parcelable G1Glasses {
 
     String id;
     String name;
-    String serial;
     int connectionState;
 }

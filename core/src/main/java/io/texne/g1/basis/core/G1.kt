@@ -43,7 +43,6 @@ class G1 {
 
     val id: String
     val name: String
-    val serial: String
     enum class ConnectionState { UNINITIALIZED, DISCONNECTED, CONNECTING, CONNECTED, DISCONNECTING, ERROR }
     val connectionState: StateFlow<ConnectionState>
 
@@ -51,10 +50,8 @@ class G1 {
 
     private constructor(right: G1Device, left: G1Device) {
         val splitL = left.name.split("_")
-        val splitR = right.name.split("_")
-        this.id = "${left.address}${right.address}"
+        this.id = "${left.address}${right.address}".filter { it != ':' }
         this.name = "${splitL[0]}.${splitL[1]}"
-        this.serial = "${splitL[3]}${splitR[3]}"
         this.right = right
         this.left = left
         this.connectionState = right.connectionState.combineState(left.connectionState) { l, r ->

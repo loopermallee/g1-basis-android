@@ -53,7 +53,6 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     val glasses = G1Glasses()
     glasses.id = this.g1.id
     glasses.name = this.g1.name
-    glasses.serial = this.g1.serial
     glasses.connectionState = this.connectionState.toInt()
     return glasses
 }
@@ -131,7 +130,7 @@ class G1Service: Service() {
                                     found.connectionState.collect { connState ->
                                         Log.d(
                                             "G1Service",
-                                            "CONNECTION_STATUS ${found.name} (${found.serial}) = ${connState}"
+                                            "CONNECTION_STATUS ${found.name} (${found.id}) = ${connState}"
                                         )
                                         state.value =
                                             state.value.copy(glasses = state.value.glasses.entries.associate {
