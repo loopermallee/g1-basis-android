@@ -13,6 +13,12 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import com.nabinbhandari.android.permissions.PermissionHandler
 import com.nabinbhandari.android.permissions.Permissions
 import io.texne.g1.basis.core.G1
@@ -25,7 +31,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
@@ -77,6 +86,8 @@ class G1Service: Service() {
 
     // internal state ------------------------------------------------------------------------------
 
+    val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "savedState")
+
     internal data class InternalGlasses(
         val connectionState: G1.ConnectionState,
         val g1: G1
@@ -106,15 +117,26 @@ class G1Service: Service() {
                 return
             }
             withPermissions {
-                // clear all glasses except connected
-                state.value = state.value.copy(
-                    status = ServiceStatus.LOOKING,
-                    glasses = state.value.glasses.values
-                        .filter { it.connectionState == G1.ConnectionState.CONNECTED }
-                        .associate { Pair(it.g1.id, it) }
-                )
-
                 coroutineScope.launch {
+                    // clear all glasses except connected
+                    state.value = state.value.copy(
+                        status = ServiceStatus.LOOKING,
+                        glasses = state.value.glasses.values
+                            .filter { it.connectionState == G1.ConnectionState.CONNECTED }
+                            .associate { Pair(it.g1.id, it) }
+                    )
+
+                    // make sure last connected id makes sense, fix if it doesn't for some reason
+                    val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
+                    var lastConnectedId = dataStore.data.map { preferences -> preferences[LAST_CONNECTED_ID] }.first()
+                    val connectedId = state.value.glasses.values.find { it.connectionState == G1.ConnectionState.CONNECTED }?.g1?.id
+                    if(connectedId != null && lastConnectedId != connectedId) {
+                        dataStore.edit { settings ->
+                            settings[LAST_CONNECTED_ID] = connectedId
+                        }
+                        lastConnectedId = connectedId
+                    }
+
                     G1.find(15.toDuration(DurationUnit.SECONDS)).collect { found ->
                         if(found != null) {
                             Log.d("G1Service", "SCANNING FOUND = ${found}")
@@ -151,6 +173,11 @@ class G1Service: Service() {
                                             })
                                     }
                                 }
+
+                                // if this is the pair we were connected to before, reconnect
+                                if(lastConnectedId == found.id) {
+                                    connectGlasses(found.id, null)
+                                }
                             }
                         } else {
                             state.value = state.value.copy(
@@ -169,6 +196,12 @@ class G1Service: Service() {
                 if (glasses != null) {
                     coroutineScope.launch {
                         val result = glasses.g1.connect(this@G1Service, coroutineScope)
+                        if(result == true) {
+                            val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
+                            dataStore.edit { settings ->
+                                settings[LAST_CONNECTED_ID] = id
+                            }
+                        }
                         callback?.onResult(result)
                     }
                 } else {
@@ -185,6 +218,10 @@ class G1Service: Service() {
                 if (glasses != null) {
                     coroutineScope.launch {
                         glasses.g1.disconnect()
+                        val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
+                        dataStore.edit { settings ->
+                            settings.remove(LAST_CONNECTED_ID)
+                        }
                         callback?.onResult(true)
                     }
                 } else {
@@ -252,6 +289,7 @@ class G1Service: Service() {
                 startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
             }
         }
+        binder.lookForGlasses()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
