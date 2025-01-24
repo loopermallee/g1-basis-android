@@ -61,7 +61,7 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
 private fun G1Service.InternalState.toState(): G1ServiceState {
     val state = G1ServiceState()
     state.status = this.status.toInt()
-    state.glasses = this.nearbyGlasses.values.map { it -> it.toGlasses() }.toTypedArray()
+    state.glasses = this.glasses.values.map { it -> it.toGlasses() }.toTypedArray()
     return state
 }
 
@@ -84,7 +84,7 @@ class G1Service: Service() {
     )
     internal data class InternalState(
         val status: ServiceStatus = ServiceStatus.READY,
-        val nearbyGlasses: Map<String, InternalGlasses> = mapOf()
+        val glasses: Map<String, InternalGlasses> = mapOf()
     )
     private val state = MutableStateFlow<InternalState>(InternalState())
 
@@ -103,37 +103,61 @@ class G1Service: Service() {
         }
 
         override fun lookForGlasses() {
+            if(state.value.status == ServiceStatus.LOOKING) {
+                return
+            }
             withPermissions {
-                state.value = state.value.copy(status = ServiceStatus.LOOKING, nearbyGlasses = mapOf())
+                // clear all glasses except connected
+                state.value = state.value.copy(
+                    status = ServiceStatus.LOOKING,
+                    glasses = state.value.glasses.values
+                        .filter { it.connectionState == G1.ConnectionState.CONNECTED }
+                        .associate { Pair(it.g1.id, it) }
+                )
+
                 coroutineScope.launch {
                     G1.find(15.toDuration(DurationUnit.SECONDS)).collect { found ->
                         if(found != null) {
-                            state.value = state.value.copy(nearbyGlasses = state.value.nearbyGlasses.plus(
-                                Pair(found.id, InternalGlasses(found.connectionState.value, found))
-                            ))
-                            coroutineScope.launch {
-                                found.connectionState.collect { connState ->
-                                    Log.d("G1Service", "CONNECTION_STATUS ${found.name} (${found.serial}) = ${connState}")
-                                    state.value = state.value.copy(nearbyGlasses = state.value.nearbyGlasses.entries.associate { it ->
-                                        if(it.key == found.id) {
-                                            Pair(
-                                                it.key,
-                                                it.value.copy(
-                                                    connectionState = connState,
-                                                    g1 = it.value.g1
-                                                )
-                                            )
-                                        } else {
-                                            Pair(
-                                                it.key,
-                                                it.value
-                                            )
-                                        }
-                                    })
+                            Log.d("G1Service", "SCANNING FOUND = ${found}")
+
+                            // add to glasses state if not already there
+                            if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
+                                state.value = state.value.copy(
+                                    glasses = state.value.glasses.plus(
+                                        Pair(found.id, InternalGlasses(found.connectionState.value, found))
+                                    )
+                                )
+                                coroutineScope.launch {
+                                    found.connectionState.collect { connState ->
+                                        Log.d(
+                                            "G1Service",
+                                            "CONNECTION_STATUS ${found.name} (${found.serial}) = ${connState}"
+                                        )
+                                        state.value =
+                                            state.value.copy(glasses = state.value.glasses.entries.associate {
+                                                if (it.key == found.id) {
+                                                    Pair(
+                                                        it.key,
+                                                        it.value.copy(
+                                                            connectionState = connState,
+                                                            g1 = it.value.g1
+                                                        )
+                                                    )
+                                                } else {
+                                                    Pair(
+                                                        it.key,
+                                                        it.value
+                                                    )
+                                                }
+                                            })
+                                    }
                                 }
                             }
                         } else {
-                            state.value = state.value.copy(status = ServiceStatus.LOOKED, nearbyGlasses = state.value.nearbyGlasses)
+                            state.value = state.value.copy(
+                                status = ServiceStatus.LOOKED,
+                                glasses = state.value.glasses,
+                            )
                         }
                     }
                 }
@@ -142,7 +166,7 @@ class G1Service: Service() {
 
         override fun connectGlasses(id: String?, callback: OperationCallback?) {
             if(id != null) {
-                val glasses = state.value.nearbyGlasses.get(id)
+                val glasses = state.value.glasses.get(id)
                 if (glasses != null) {
                     coroutineScope.launch {
                         val result = glasses.g1.connect(this@G1Service, coroutineScope)
@@ -158,7 +182,7 @@ class G1Service: Service() {
 
         override fun disconnectGlasses(id: String?, callback: OperationCallback?) {
             if(id != null) {
-                val glasses = state.value.nearbyGlasses.get(id)
+                val glasses = state.value.glasses.get(id)
                 if (glasses != null) {
                     coroutineScope.launch {
                         glasses.g1.disconnect()

@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.androidx.core)
     implementation(libs.coroutines.android)
     implementation(libs.nabinbhandari.permissions)
+    implementation(libs.androidx.datastore)
 
     implementation(project(":core"))
 }
