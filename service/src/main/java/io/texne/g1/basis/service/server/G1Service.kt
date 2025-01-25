@@ -16,7 +16,6 @@ import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.nabinbhandari.android.permissions.PermissionHandler
@@ -34,7 +33,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
@@ -259,34 +257,42 @@ class G1Service: Service() {
     override fun onCreate() {
         super.onCreate()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val G1_SERVICE_NOTIFICATION_CHANNEL_ID: String = "0xC0FFEE"
-            val G1_SERVICE_NOTIFICATION_ID: Int = 0xC0FFEE
+            withPermissions {
+                val G1_SERVICE_NOTIFICATION_CHANNEL_ID: String = "0xC0FFEE"
+                val G1_SERVICE_NOTIFICATION_ID: Int = 0xC0FFEE
 
-            val notificationChannel = NotificationChannel(
-                G1_SERVICE_NOTIFICATION_CHANNEL_ID,
-                getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_MIN
-            )
-            notificationChannel.description = getString(R.string.notification_channel_description)
-            val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(notificationChannel)
-
-            val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_service)
-                .setContentTitle(getString(R.string.notification_channel_name))
-                .setContentText(getString(R.string.notification_text))
-                .setContentIntent(PendingIntent.getActivity(this, 0, Intent(this, G1Service::class.java),
-                    PendingIntent.FLAG_IMMUTABLE))
-                .build()
-
-            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    G1_SERVICE_NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                val notificationChannel = NotificationChannel(
+                    G1_SERVICE_NOTIFICATION_CHANNEL_ID,
+                    getString(R.string.notification_channel_name),
+                    NotificationManager.IMPORTANCE_MIN
                 )
-            } else {
-                startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
+                notificationChannel.description =
+                    getString(R.string.notification_channel_description)
+                val notificationManager =
+                    getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+                notificationManager.createNotificationChannel(notificationChannel)
+
+                val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_service)
+                    .setContentTitle(getString(R.string.notification_channel_name))
+                    .setContentText(getString(R.string.notification_text))
+                    .setContentIntent(
+                        PendingIntent.getActivity(
+                            this, 0, Intent(this, G1Service::class.java),
+                            PendingIntent.FLAG_IMMUTABLE
+                        )
+                    )
+                    .build()
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        G1_SERVICE_NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                    )
+                } else {
+                    startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
+                }
             }
         }
         binder.lookForGlasses()
