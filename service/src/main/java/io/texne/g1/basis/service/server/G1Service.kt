@@ -303,19 +303,11 @@ class G1Service: Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? {
-        start(applicationContext)
-        return binder
-    }
-
-    // singleton -----------------------------------------------------------------------------------
-
-    companion object {
-        fun start(context: Context) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(Intent(context, G1Service::class.java))
-            } else {
-                context.startService(Intent(context, G1Service::class.java))
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            applicationContext.startForegroundService(Intent(applicationContext, G1Service::class.java))
+        } else {
+            applicationContext.startService(Intent(applicationContext, G1Service::class.java))
         }
+        return binder
     }
 }
