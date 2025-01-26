@@ -46,12 +46,12 @@ internal class G1Device(
             }
             scope.launch {
                 manager.incoming.collect { packet ->
-                    if(packet.type == null) {
+                    if(packet.type == null || packet.type.byte == null) {
 //                        Log.d("G1BLEManager", "Empty packet arrived from stream")
                     } else {
-                        val callbacks = pendingCommandRequests.get(packet.type)
+                        val callbacks = pendingCommandRequests.get(packet.type.byte)
                         if (callbacks.isNullOrEmpty().not()) {
-                            pendingCommandRequests[packet.type] = callbacks!!.slice(1..callbacks.lastIndex)
+                            pendingCommandRequests[packet.type.byte] = callbacks!!.slice(1..callbacks.lastIndex)
                             val first = callbacks.first()
                             first.callback(packet)
                         } else {
@@ -95,14 +95,14 @@ internal class G1Device(
     private val COMMAND_EXPIRATION_MILLIS = 5000
 
     private data class CommandCallback(
-        val callback: (ResponsePacket?) -> Unit,
+        val callback: (IncomingPacket?) -> Unit,
         val expires: Long
     )
 
     private val commandScheduler: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
     private val pendingCommandRequests = mutableMapOf<Byte, List<CommandCallback>>()
 
-    private fun addCommandCallback(command: Byte, callback: (ResponsePacket?) -> Unit) {
+    private fun addCommandCallback(command: Byte, callback: (IncomingPacket?) -> Unit) {
         val callbacks = pendingCommandRequests.get(command)
         val newCallback = CommandCallback(
             callback = callback,

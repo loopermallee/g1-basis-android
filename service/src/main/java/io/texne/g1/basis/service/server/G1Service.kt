@@ -310,4 +310,14 @@ class G1Service: Service() {
         }
         return binder
     }
+
+    override fun onDestroy() {
+        // disconnect any connected devices
+        coroutineScope.launch {
+            state.value.glasses.values.filter { it.connectionState == G1.ConnectionState.CONNECTED }.forEach {
+                it.g1.disconnect()
+            }
+        }
+        onDestroy()
+    }
 }

@@ -12,48 +12,129 @@ const val UART_READ_CHARACTERISTIC_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 
 // request protocol --------------------------------------------------------------------------------
 
-enum class RequestType(val byte: Byte) {
-    // 0x00
-    // 0x01 -- initialize?,
-    // 0x02 -- antishake?,
+enum class OutgoingPacketType(val byte: Byte) {
+                                                                                             // 0x00
+    BRIGHTNESS(0x01),
+                                                                               // 0x02 -- antishake?
     SILENT_MODE(0x03),
-    // 0x04
-    // 0x05 -- turn on and off logging?
-    DASHBOARD(0x06),
-    // 0x07 -- start countdown?
-    // 0x08
+    SETUP(0x04),
+                                                                 // 0x05 -- turn on and off logging?
+    SHOW_DASHBOARD(0x06),
+                                                                         // 0x07 -- start countdown?
+                                                                                             // 0x08
     TELEPROMPTER(0x09),
     NAVIGATION(0x0A),
-    // 0x0B
-    // 0x0C
-    // 0x0D -- translation related?
+    HEADUP_ANGLE(0x0B),
+                                                                                             // 0x0C
+                                                                     // 0x0D -- translation related?
     MICROPHONE(0x0E),
-    // 0x0F -- translation related?
-    // 0x10-0x20
+                                                                     // 0x0F -- translation related?
+                                                                                        // 0x10-0x14
+    BMP(0x15),
+    CRC(0x16),
+                                                                                        // 0x17-0x1D
+    ADD_QUICK_NOTE(0x1E),
+                                                                                        // 0x1F-0x20
     QUICK_NOTE(0x21),
-    // 0x22 -- dashboard?
-    // 0x23-0x24
+    DASHBOARD(0x22),
+                                                                                        // 0x23-0x24
     HEARTBEAT(0x25),
-    // 0x26-0x4A
+    DASHBOARD_POSITION(0x26),
+    GLASS_WEARING(0x27),
+                                                                                        // 0x28-0x4A
     NOTIFICATION(0x4B),
-    // 0x4C
-    // 0x4D -- initialize?
+                                                                                             // 0x4C
+    INITIALIZE(0x4D),
     SEND_AI_RESULT(0x4E),
-    // 0x4F-0xF0
+                                                                                        // 0x4F-0xF0
     RECEIVE_MIC_DATA(0xF1.toByte()),
-    // 0xF2-0xF4
-    START_AI(0xF5.toByte())
-    // 0xF6-0xFF
+                                                                                        // 0xF2-0xF4
+    START_AI(0xF5.toByte());
+                                                                                        // 0xF6-0xFF
+
+
+
+    override fun toString(): String =
+        when(this.byte) {
+            BRIGHTNESS.byte -> "BRIGHTNESS"
+            SILENT_MODE.byte -> "SILENT_MODE"
+            SETUP.byte -> "SETUP"
+            SHOW_DASHBOARD.byte -> "SHOW_DASHBOARD"
+            TELEPROMPTER.byte -> "TELEPROMPTER"
+            NAVIGATION.byte -> "NAVIGATION"
+            HEADUP_ANGLE.byte -> "HEADUP_ANGLE"
+            MICROPHONE.byte -> "MICROPHONE"
+            BMP.byte -> "BMP"
+            CRC.byte -> "CRC"
+            ADD_QUICK_NOTE.byte -> "ADD_QUICK_NOTE"
+            QUICK_NOTE.byte -> "QUICK_NOTE"
+            DASHBOARD.byte -> "DASHBOARD"
+            HEARTBEAT.byte -> "HEARTBEAT"
+            DASHBOARD_POSITION.byte -> "DASHBOARD_POSITION"
+            GLASS_WEARING.byte -> "GLASS_WEARING"
+            NOTIFICATION.byte -> "NOTIFICATION"
+            INITIALIZE.byte -> "INITIALIZE"
+            SEND_AI_RESULT.byte -> "SEND_AI_RESULT"
+            RECEIVE_MIC_DATA.byte -> "RECEIVE_MIC_DATA"
+            START_AI.byte -> "START_AI"
+            else -> "UNKNOWN"
+        }
+
+    companion object {
+        fun from(byte: Byte): OutgoingPacketType? =
+            when(byte) {
+                BRIGHTNESS.byte -> BRIGHTNESS
+                SILENT_MODE.byte -> SILENT_MODE
+                SETUP.byte -> SETUP
+                SHOW_DASHBOARD.byte -> SHOW_DASHBOARD
+                TELEPROMPTER.byte -> TELEPROMPTER
+                NAVIGATION.byte -> NAVIGATION
+                HEADUP_ANGLE.byte -> HEADUP_ANGLE
+                MICROPHONE.byte -> MICROPHONE
+                BMP.byte -> BMP
+                CRC.byte -> CRC
+                ADD_QUICK_NOTE.byte -> ADD_QUICK_NOTE
+                QUICK_NOTE.byte -> QUICK_NOTE
+                DASHBOARD.byte -> DASHBOARD
+                HEARTBEAT.byte -> HEARTBEAT
+                DASHBOARD_POSITION.byte -> DASHBOARD_POSITION
+                GLASS_WEARING.byte -> GLASS_WEARING
+                NOTIFICATION.byte -> NOTIFICATION
+                INITIALIZE.byte -> INITIALIZE
+                SEND_AI_RESULT.byte -> SEND_AI_RESULT
+                RECEIVE_MIC_DATA.byte -> RECEIVE_MIC_DATA
+                START_AI.byte -> START_AI
+                else -> null
+            }
+        }
 }
 
 abstract class RequestSubType(val byte: Byte)
 
 // response protocol -------------------------------------------------------------------------------
 
-enum class ResponseType(val byte: Byte) {
-    // 0x00-0x24
+enum class IncomingPacketType(val byte: Byte?) {
+    EMPTY(null),
+                                                                                        // 0x00-0x24
     HEARTBEAT(0x25)
-    // 0x26-0xFF
+                                                                                        // 0x26-0xFF
+    ;
+
+    override fun toString(): String =
+        when(this.byte) {
+            null -> "EMPTY"
+            HEARTBEAT.byte -> "HEARTBEAT"
+            else -> "UNKNOWN"
+        }
+
+    companion object {
+        fun from(byte: Byte?): IncomingPacketType? =
+            when(byte) {
+                null -> EMPTY
+                HEARTBEAT.byte -> HEARTBEAT
+                else -> null
+            }
+    }
 }
 
 abstract class ResponseSubType(val byte: Byte)
@@ -64,8 +145,8 @@ abstract class Packet(
     val bytes: ByteArray
 )
 
-abstract class RequestPacket(
-    val type: RequestType,
+abstract class OutgoingPacket(
+    val type: OutgoingPacketType,
     val sequence: UByte,
     val subtype: RequestSubType,
     val data: ByteArray
@@ -79,22 +160,28 @@ abstract class RequestPacket(
     ).plus(data)
 )
 
-abstract class ResponsePacket(bytes: ByteArray): Packet(bytes) {
+abstract class IncomingPacket(bytes: ByteArray): Packet(bytes) {
 
-    val type = if(bytes.isEmpty()) null else bytes[0]
+    val type = IncomingPacketType.from(if(bytes.isEmpty()) null else bytes[0])
+
+    override fun toString(): String {
+        return "${String.format("%02d", bytes.size)} b" +
+                " => ${bytes.map { it -> String.format("%02X", it) }.joinToString(" ")}" +
+                " => ${type ?: "UNKNOWN"}"
+    }
 
     companion object {
-        fun fromBytes(bytes: ByteArray): ResponsePacket =
+        fun fromBytes(bytes: ByteArray): IncomingPacket =
             if(bytes.isEmpty()) {
-                EmptyResponsePacket()
+                EmptyIncomingPacket()
             } else {
                 when (bytes[0]) {
-                    ResponseType.HEARTBEAT.byte -> {
+                    OutgoingPacketType.HEARTBEAT.byte -> {
                         HeartbeatResponsePacket(bytes)
                     }
 
                     else -> {
-                        UnknownResponse(bytes)
+                        UnknownIncomingPacket(bytes)
                     }
                 }
             }
@@ -105,8 +192,8 @@ abstract class ResponsePacket(bytes: ByteArray): Packet(bytes) {
 
 class HeartbeatRequestSubType: RequestSubType(0x04)
 
-class HeartbeatRequestPacket: RequestPacket(
-    RequestType.HEARTBEAT,
+class HeartbeatRequestPacket: OutgoingPacket(
+    OutgoingPacketType.HEARTBEAT,
     0x01.toUByte(),
     HeartbeatRequestSubType(),
     byteArrayOf(0x01)
@@ -114,11 +201,11 @@ class HeartbeatRequestPacket: RequestPacket(
 
 // actual packets ----------------------------------------------------------------------------------
 
-class HeartbeatResponsePacket(bytes: ByteArray): ResponsePacket(bytes)
+class HeartbeatResponsePacket(bytes: ByteArray): IncomingPacket(bytes)
 
-class EmptyResponsePacket: ResponsePacket(byteArrayOf())
+class EmptyIncomingPacket: IncomingPacket(byteArrayOf())
 
-class UnknownResponse(bytes: ByteArray): ResponsePacket(bytes) {
+class UnknownIncomingPacket(bytes: ByteArray): IncomingPacket(bytes) {
     val rest = bytes.drop(1)
 }
 

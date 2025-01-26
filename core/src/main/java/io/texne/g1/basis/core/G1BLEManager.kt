@@ -30,7 +30,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
 
     private val writableConnectionState = MutableStateFlow<G1.ConnectionState>(G1.ConnectionState.CONNECTING)
     val connectionState = writableConnectionState.asStateFlow()
-    private val writableIncoming = MutableSharedFlow<ResponsePacket>()
+    private val writableIncoming = MutableSharedFlow<IncomingPacket>()
     val incoming = writableIncoming.asSharedFlow()
 
     private var deviceGatt: BluetoothGatt? = null
@@ -75,20 +75,21 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
         setNotificationCallback(
             readCharacteristic
         ).with { device, data ->
-            val packet = ResponsePacket.fromBytes(data.toByteArray())
+            val split = device.name.split('_')
+            val packet = IncomingPacket.fromBytes(data.toByteArray())
             when(packet) {
-                is EmptyResponsePacket -> {
-//                    Log.d("G1BLEManager", "Empty packet received")
+                is EmptyIncomingPacket -> {
+                    Log.d("G1BLEManager", "Empty packet received")
                 }
-                is UnknownResponse -> {
-                    Log.d("G1BLEManager", "RECEIVE_BYTES ${deviceName} - Received = ${data}")
-//                    Log.d("G1BLEManager", "Unknown packet received")
+                is UnknownIncomingPacket -> {
+                    Log.d("G1BLEManager", "RECEIVE_PACKET ${split[2]} - ${packet}")
+                    Log.d("G1BLEManager", "Unknown packet received")
                 }
                 is HeartbeatResponsePacket -> {
-//                    Log.d("G1BLEManager", "Heartbeat back!")
+                    Log.d("G1BLEManager", "Heartbeat back!")
                 }
                 else -> {
-                    Log.d("G1BLEManager", "RECEIVE_BYTES ${deviceName} - Received = ${data}")
+                    Log.d("G1BLEManager", "RECEIVE_PACKET ${split[2]} - ${packet}")
                     coroutineScope.launch {
                         writableIncoming.emit(packet)
                     }
@@ -99,7 +100,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
 
     //
 
-    fun send(packet: RequestPacket) {
+    fun send(packet: OutgoingPacket) {
         writeCharacteristic(writeCharacteristic!!, packet.bytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE).await()
     }
 
