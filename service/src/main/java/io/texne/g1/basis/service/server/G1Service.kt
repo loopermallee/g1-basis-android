@@ -303,6 +303,7 @@ class G1Service: Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? {
+        start(applicationContext)
         return binder
     }
 

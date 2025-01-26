@@ -9,20 +9,11 @@ import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
 import io.texne.g1.basis.service.protocol.OperationCallback
 import io.texne.g1.basis.service.protocol.G1ServiceState
-import io.texne.g1.basis.service.server.G1Service
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.Closeable
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-
-fun G1ServiceState?.toFullString(): String {
-    if(this == null) {
-        return "(null)"
-    } else {
-        return "{ status = ${this.status}, glasses = ${this.glasses.size} }"
-    }
-}
 
 class G1ServiceClient(
     private val context: Context
@@ -56,11 +47,8 @@ class G1ServiceClient(
     //
 
     fun open(): Boolean {
-        G1Service.start(context)
-        Intent(
-            context,
-            G1Service::class.java
-        ).also { intent ->
+        Intent().also { intent ->
+            intent.setClassName(context, "io.texne.g1.basis.service.server.G1Service")
             return context.bindService(
                 intent,
                 serviceConnection,
