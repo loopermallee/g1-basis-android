@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import no.nordicsemi.android.ble.data.Data
 import no.nordicsemi.android.ble.ktx.suspend
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import java.util.Date
@@ -62,7 +63,23 @@ internal class G1Device(
                             }
                         }
                         else -> {
-                            // TODO: direct incoming packet to correct callback (request or unrequested)
+                            // is this the response we're expecting?
+                            val request = currentRequest
+                            if(request != null && request.outgoing.type.byte == packet.type?.byte) {
+                                // service the request, and advance the queue
+                                request.callback.invoke(packet)
+                                val nextRequest = queuedRequests.removeFirstOrNull()
+                                if(nextRequest != null) {
+                                    currentRequest = nextRequest.copy(
+                                        expires = Date().time + REQUEST_EXPIRATION_MILLIS
+                                    )
+                                    manager.send(nextRequest.outgoing)
+                                } else {
+                                    currentRequest = null
+                                }
+                            } else {
+                                // TODO: emit it as an unrequested packet
+                            }
                         }
                     }
                 }
@@ -110,7 +127,12 @@ internal class G1Device(
 
     private fun processRequest(outgoing: OutgoingPacket, callback: (IncomingPacket?) -> Unit) {
         if(queuedRequests.isEmpty()) {
-
+            currentRequest = Request(
+                outgoing = outgoing,
+                callback = callback,
+                expires = Date().time + REQUEST_EXPIRATION_MILLIS
+            )
+            manager.send(outgoing)
         } else {
             queuedRequests.add(
                 Request(
@@ -134,7 +156,18 @@ internal class G1Device(
     private fun sendBatteryCheck() {
         manager.send(BatteryLevelRequestPacket())
 
-        // If current request has expired, discard it and send the next one in the queue
+        // if current request has expired, return failure and advance queue
+        val request = currentRequest
+        if(request != null && request.expires < Date().time) {
+            request.callback(null)
+            val nextRequest = queuedRequests.removeFirstOrNull()
+            if(nextRequest != null) {
+                currentRequest = nextRequest.copy(
+                    expires = Date().time + REQUEST_EXPIRATION_MILLIS
+                )
+                manager.send(nextRequest.outgoing)
+            }
+        }
     }
 
     private fun stopHeartbeat() {
