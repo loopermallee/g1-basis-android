@@ -41,7 +41,9 @@ enum class OutgoingPacketType(val byte: Byte) {
     HEARTBEAT(0x25),
     DASHBOARD_POSITION(0x26),
     GLASS_WEARING(0x27),
-                                                                                        // 0x28-0x4A
+                                                                                        // 0x28-0x2B
+    BATTERY_LEVEL(0x2C),
+                                                                                        // 0x2D-0x4A
     NOTIFICATION(0x4B),
                                                                                              // 0x4C
     INITIALIZE(0x4D),
@@ -70,6 +72,7 @@ enum class OutgoingPacketType(val byte: Byte) {
             QUICK_NOTE.byte -> "QUICK_NOTE"
             DASHBOARD.byte -> "DASHBOARD"
             HEARTBEAT.byte -> "HEARTBEAT"
+            BATTERY_LEVEL.byte -> "BATTERY_LEVEL"
             DASHBOARD_POSITION.byte -> "DASHBOARD_POSITION"
             GLASS_WEARING.byte -> "GLASS_WEARING"
             NOTIFICATION.byte -> "NOTIFICATION"
@@ -78,34 +81,6 @@ enum class OutgoingPacketType(val byte: Byte) {
             RECEIVE_MIC_DATA.byte -> "RECEIVE_MIC_DATA"
             START_AI.byte -> "START_AI"
             else -> "UNKNOWN"
-        }
-
-    companion object {
-        fun from(byte: Byte): OutgoingPacketType? =
-            when(byte) {
-                BRIGHTNESS.byte -> BRIGHTNESS
-                SILENT_MODE.byte -> SILENT_MODE
-                SETUP.byte -> SETUP
-                SHOW_DASHBOARD.byte -> SHOW_DASHBOARD
-                TELEPROMPTER.byte -> TELEPROMPTER
-                NAVIGATION.byte -> NAVIGATION
-                HEADUP_ANGLE.byte -> HEADUP_ANGLE
-                MICROPHONE.byte -> MICROPHONE
-                BMP.byte -> BMP
-                CRC.byte -> CRC
-                ADD_QUICK_NOTE.byte -> ADD_QUICK_NOTE
-                QUICK_NOTE.byte -> QUICK_NOTE
-                DASHBOARD.byte -> DASHBOARD
-                HEARTBEAT.byte -> HEARTBEAT
-                DASHBOARD_POSITION.byte -> DASHBOARD_POSITION
-                GLASS_WEARING.byte -> GLASS_WEARING
-                NOTIFICATION.byte -> NOTIFICATION
-                INITIALIZE.byte -> INITIALIZE
-                SEND_AI_RESULT.byte -> SEND_AI_RESULT
-                RECEIVE_MIC_DATA.byte -> RECEIVE_MIC_DATA
-                START_AI.byte -> START_AI
-                else -> null
-            }
         }
 }
 
@@ -116,14 +91,25 @@ abstract class RequestSubType(val byte: Byte)
 enum class IncomingPacketType(val byte: Byte?) {
     EMPTY(null),
                                                                                         // 0x00-0x24
-    HEARTBEAT(0x25)
-                                                                                        // 0x26-0xFF
+    HEARTBEAT(0x25),
+                                                                                        // 0x26-0x28
+    // 0x29 - observed use by ER app
+                                                                                        // 0x2A
+    // 0x2B - observed use by ER app
+    BATTERY_LEVEL(0x2C)
+                                                                                        // 0x2D-0x36
+    // 0x37 - observed use by ER app
+                                                                                        // 0x38-0x6D
+    // 0x6E - observed use by ER app
+                                                                                        // 0x6F-0xFF
     ;
+
 
     override fun toString(): String =
         when(this.byte) {
             null -> "EMPTY"
             HEARTBEAT.byte -> "HEARTBEAT"
+            BATTERY_LEVEL.byte -> "BATTERY_LEVEL"
             else -> "UNKNOWN"
         }
 
@@ -132,6 +118,7 @@ enum class IncomingPacketType(val byte: Byte?) {
             when(byte) {
                 null -> EMPTY
                 HEARTBEAT.byte -> HEARTBEAT
+                BATTERY_LEVEL.byte -> BATTERY_LEVEL
                 else -> null
             }
     }
@@ -147,12 +134,19 @@ abstract class Packet(
 
 abstract class OutgoingPacket(
     val type: OutgoingPacketType,
+    rest: ByteArray
+): Packet(
+    byteArrayOf(type.byte).plus(rest)
+)
+
+abstract class SequencedOutgoingPacket(
+    type: OutgoingPacketType,
     val sequence: UByte,
     val subtype: RequestSubType,
     val data: ByteArray
-): Packet(
+): OutgoingPacket(
+    type,
     byteArrayOf(
-        type.byte,
         ((5+data.size) and 0xFF).toByte(),
         (((5+data.size) shr 8) and 0xFF).toByte(),
         sequence.toByte(),
@@ -164,49 +158,54 @@ abstract class IncomingPacket(bytes: ByteArray): Packet(bytes) {
 
     val type = IncomingPacketType.from(if(bytes.isEmpty()) null else bytes[0])
 
-    override fun toString(): String {
-        return "${String.format("%02d", bytes.size)} b" +
-                " => ${bytes.map { it -> String.format("%02X", it) }.joinToString(" ")}" +
-                " => ${type ?: "UNKNOWN"}"
-    }
-
     companion object {
         fun fromBytes(bytes: ByteArray): IncomingPacket =
             if(bytes.isEmpty()) {
                 EmptyIncomingPacket()
             } else {
                 when (bytes[0]) {
-                    OutgoingPacketType.HEARTBEAT.byte -> {
-                        HeartbeatResponsePacket(bytes)
-                    }
-
-                    else -> {
-                        UnknownIncomingPacket(bytes)
-                    }
+                    OutgoingPacketType.HEARTBEAT.byte -> HeartbeatResponsePacket(bytes)
+                    OutgoingPacketType.BATTERY_LEVEL.byte -> BatteryLevelResponsePacket(bytes)
+                    else -> UnknownIncomingPacket(bytes)
                 }
             }
     }
 }
 
-// actual requests ---------------------------------------------------------------------------------
+// actual outgoing ---------------------------------------------------------------------------------
 
 class HeartbeatRequestSubType: RequestSubType(0x04)
-
-class HeartbeatRequestPacket: OutgoingPacket(
+class HeartbeatRequestPacket: SequencedOutgoingPacket(
     OutgoingPacketType.HEARTBEAT,
     0x01.toUByte(),
     HeartbeatRequestSubType(),
     byteArrayOf(0x01)
 )
 
-// actual packets ----------------------------------------------------------------------------------
+//
+
+class BatteryLevelRequestPacket: OutgoingPacket(
+    OutgoingPacketType.BATTERY_LEVEL,
+    byteArrayOf(0x01.toByte())
+)
+
+// actual incoming --------0------------------------------------------------------------------------
 
 class HeartbeatResponsePacket(bytes: ByteArray): IncomingPacket(bytes)
+
+class BatteryLevelResponsePacket(bytes: ByteArray): IncomingPacket(bytes) {
+    override fun toString(): String {
+        return "${type} => ${bytes.map { it -> String.format("%02X", it) }.joinToString(" ")}"
+    }
+}
 
 class EmptyIncomingPacket: IncomingPacket(byteArrayOf())
 
 class UnknownIncomingPacket(bytes: ByteArray): IncomingPacket(bytes) {
-    val rest = bytes.drop(1)
+    override fun toString(): String {
+        return "UNKNOWN => ${String.format("%02d", bytes.size)} b" +
+                " => ${bytes.map { it -> String.format("%02X", it) }.joinToString(" ")}"
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
