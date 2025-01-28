@@ -43,8 +43,14 @@ class G1 {
 
     val id: String
     val name: String
+
     enum class ConnectionState { UNINITIALIZED, DISCONNECTED, CONNECTING, CONNECTED, DISCONNECTING, ERROR }
-    val connectionState: StateFlow<ConnectionState>
+    data class State(
+        val connectionState: ConnectionState,
+        val batteryPercentage: Int?
+    )
+    val state: StateFlow<State>
+    private var currentState: State? = null
 
     // construction --------------------------------------------------------------------------------
 
@@ -54,26 +60,47 @@ class G1 {
         this.name = "${splitL[0]}.${splitL[1]}"
         this.right = right
         this.left = left
-        this.connectionState = right.connectionState.combineState(left.connectionState) { l, r ->
-            val state = when {
-                l == ConnectionState.CONNECTED && r == ConnectionState.CONNECTED -> ConnectionState.CONNECTED
-                l == ConnectionState.DISCONNECTING || r == ConnectionState.DISCONNECTING -> ConnectionState.DISCONNECTING
-                l == ConnectionState.DISCONNECTED && r == ConnectionState.CONNECTED -> ConnectionState.DISCONNECTING
-                l == ConnectionState.CONNECTED && r == ConnectionState.DISCONNECTED -> ConnectionState.DISCONNECTING
-                l == ConnectionState.CONNECTING || r == ConnectionState.CONNECTING -> ConnectionState.CONNECTING
-                l == ConnectionState.DISCONNECTED && r == ConnectionState.DISCONNECTED -> ConnectionState.DISCONNECTED
-                l == ConnectionState.ERROR || r == ConnectionState.ERROR -> ConnectionState.ERROR
+        this.state = right.state.combineState(left.state) { l, r ->
+            val lConnectionState = l.connectionState
+            val rConnectionState = r.connectionState
+            val connectionState = when {
+                lConnectionState == ConnectionState.CONNECTED && rConnectionState == ConnectionState.CONNECTED -> ConnectionState.CONNECTED
+                lConnectionState == ConnectionState.DISCONNECTING || rConnectionState == ConnectionState.DISCONNECTING -> ConnectionState.DISCONNECTING
+                lConnectionState == ConnectionState.DISCONNECTED && rConnectionState == ConnectionState.CONNECTED -> ConnectionState.DISCONNECTING
+                lConnectionState == ConnectionState.CONNECTED && rConnectionState == ConnectionState.DISCONNECTED -> ConnectionState.DISCONNECTING
+                lConnectionState == ConnectionState.CONNECTING || rConnectionState == ConnectionState.CONNECTING -> ConnectionState.CONNECTING
+                lConnectionState == ConnectionState.DISCONNECTED && rConnectionState == ConnectionState.DISCONNECTED -> ConnectionState.DISCONNECTED
+                lConnectionState == ConnectionState.ERROR || rConnectionState == ConnectionState.ERROR -> ConnectionState.ERROR
                 else -> ConnectionState.UNINITIALIZED
             }
-            Log.d("G1", "CONNECTION_STATUS - composing - ${l} and ${r} = ${state}")
-            state
+
+            val batteryPercentage = if(l.batteryPercentage == null || r.batteryPercentage == null) null else l.batteryPercentage.coerceAtMost(
+                r.batteryPercentage
+            )
+
+            val current = currentState
+            if(
+                current != null &&
+                connectionState == current.connectionState &&
+                batteryPercentage == current.batteryPercentage
+            ) {
+                current
+            } else {
+                val newState = State(
+                    connectionState = connectionState,
+                    batteryPercentage = batteryPercentage
+                )
+                Log.d("G1", "G1_STATE - composing - ${l} and ${r} = ${newState}")
+                currentState = newState
+                newState
+            }
         }
     }
 
     // connect / disconnect ------------------------------------------------------------------------
 
     suspend fun connect(context: Context, scope: CoroutineScope) = coroutineScope<Boolean> {
-        if(connectionState.value == ConnectionState.CONNECTED) {
+        if(state.value.connectionState == ConnectionState.CONNECTED) {
             true
         } else {
             val results = awaitAll(

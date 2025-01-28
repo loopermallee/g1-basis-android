@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
+import java.util.Locale
 
 @Composable
 fun ServiceState(status: Int) {
@@ -48,6 +49,16 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
         ) {
             Text(glasses.name)
             Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
+            if(glasses.batteryPercentage >= 0) {
+                Text(
+                    color = when {
+                      glasses.batteryPercentage > 74 -> Color.Green
+                      glasses.batteryPercentage > 24 -> Color.Yellow
+                      else -> Color.Red
+                    },
+                    text = String.format(Locale.US, "%3d%% battery", glasses.batteryPercentage)
+                )
+            }
         }
         Spacer(modifier = Modifier.weight(1f))
         if(glasses.connectionState == G1Glasses.CONNECTING || glasses.connectionState == G1Glasses.DISCONNECTING) {

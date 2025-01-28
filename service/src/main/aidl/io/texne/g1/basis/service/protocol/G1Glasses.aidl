@@ -12,4 +12,5 @@ parcelable G1Glasses {
     String id;
     String name;
     int connectionState;
+    int batteryPercentage;
 }

@@ -61,6 +61,7 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     glasses.id = this.g1.id
     glasses.name = this.g1.name
     glasses.connectionState = this.connectionState.toInt()
+    glasses.batteryPercentage = this.batteryPercentage ?: -1
     return glasses
 }
 
@@ -88,6 +89,7 @@ class G1Service: Service() {
 
     internal data class InternalGlasses(
         val connectionState: G1.ConnectionState,
+        val batteryPercentage: Int?,
         val g1: G1
     )
     internal data class InternalState(
@@ -143,14 +145,14 @@ class G1Service: Service() {
                             if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
                                 state.value = state.value.copy(
                                     glasses = state.value.glasses.plus(
-                                        Pair(found.id, InternalGlasses(found.connectionState.value, found))
+                                        Pair(found.id, InternalGlasses(found.state.value.connectionState, found.state.value.batteryPercentage, found))
                                     )
                                 )
                                 coroutineScope.launch {
-                                    found.connectionState.collect { connState ->
+                                    found.state.collect { glassesState ->
                                         Log.d(
                                             "G1Service",
-                                            "CONNECTION_STATUS ${found.name} (${found.id}) = ${connState}"
+                                            "GLASSES_STATE ${found.name} (${found.id}) = ${glassesState}"
                                         )
                                         state.value =
                                             state.value.copy(glasses = state.value.glasses.entries.associate {
@@ -158,7 +160,8 @@ class G1Service: Service() {
                                                     Pair(
                                                         it.key,
                                                         it.value.copy(
-                                                            connectionState = connState,
+                                                            connectionState = glassesState.connectionState,
+                                                            batteryPercentage = glassesState.batteryPercentage,
                                                             g1 = it.value.g1
                                                         )
                                                     )

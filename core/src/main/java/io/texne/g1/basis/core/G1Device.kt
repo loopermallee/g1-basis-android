@@ -23,10 +23,15 @@ internal class G1Device(
     val name = scanResult.device.name
     val address = scanResult.device.address
 
-    // connection state flow -----------------------------------------------------------------------
+    // state flow ----------------------------------------------------------------------------------
 
-    private val writableConnectionState = MutableStateFlow<G1.ConnectionState>(G1.ConnectionState.UNINITIALIZED)
-    val connectionState = writableConnectionState.asStateFlow()
+    data class State(
+        val connectionState: G1.ConnectionState = G1.ConnectionState.UNINITIALIZED,
+        val batteryPercentage: Int? = null
+    )
+
+    private val writableState = MutableStateFlow<State>(State())
+    val state = writableState.asStateFlow()
 
     // manager -------------------------------------------------------------------------------------
 
@@ -41,24 +46,23 @@ internal class G1Device(
             scope.launch {
                 manager.connectionState.collect {
                     Log.d("G1Device", "CONNECTION_STATUS ${scanResult.device.name} = ${it}")
-                    writableConnectionState.value = it
+                    writableState.value = state.value.copy(
+                        connectionState = it
+                    )
                 }
             }
             scope.launch {
                 manager.incoming.collect { packet ->
-                    if(packet.type == null || packet.type.byte == null) {
-//                        Log.d("G1BLEManager", "Empty packet arrived from stream")
-                    } else {
-                        val callbacks = pendingCommandRequests.get(packet.type.byte)
-                        if (callbacks.isNullOrEmpty().not()) {
-                            pendingCommandRequests[packet.type.byte] = callbacks!!.slice(1..callbacks.lastIndex)
-                            val first = callbacks.first()
-                            first.callback(packet)
-                        } else {
-                            Log.e(
-                                "G1BLEManager",
-                                "ERROR: Data received for command ${packet.type} that has no attached callbacks"
-                            )
+                    when(packet) {
+                        is BatteryLevelResponsePacket -> {
+                            if(state.value.batteryPercentage != packet.level) {
+                                writableState.value = state.value.copy(
+                                    batteryPercentage = packet.level
+                                )
+                            }
+                        }
+                        else -> {
+                            // TODO: direct incoming packet to correct callback (request or unrequested)
                         }
                     }
                 }
@@ -70,7 +74,7 @@ internal class G1Device(
                 .retry(3)
                 .timeout(30_000)
                 .suspend()
-            startHeartbeat()
+            startPeriodicBatteryCheck()
             return true
         } catch (e: Throwable) {
             Log.e(
@@ -86,63 +90,55 @@ internal class G1Device(
         manager.disconnect().suspend()
     }
 
-    // commands ------------------------------------------------------------------------------------
+    // requests ------------------------------------------------------------------------------------
 
-    // TODO: commands to device
+    // TODO: methods sending requests to device
 
-    // command and response ------------------------------------------------------------------------
+    // request and response mechanism --------------------------------------------------------------
 
-    private val COMMAND_EXPIRATION_MILLIS = 5000
+    private val REQUEST_EXPIRATION_MILLIS = 5000
 
-    private data class CommandCallback(
+    private data class Request(
+        val outgoing: OutgoingPacket,
         val callback: (IncomingPacket?) -> Unit,
-        val expires: Long
+        val expires: Long = 0
     )
 
-    private val commandScheduler: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
-    private val pendingCommandRequests = mutableMapOf<Byte, List<CommandCallback>>()
+    private val requestScheduler: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+    private val queuedRequests = mutableListOf<Request>()
+    private var currentRequest: Request? = null
 
-    private fun addCommandCallback(command: Byte, callback: (IncomingPacket?) -> Unit) {
-        val callbacks = pendingCommandRequests.get(command)
-        val newCallback = CommandCallback(
-            callback = callback,
-            expires = Date().time + COMMAND_EXPIRATION_MILLIS
-        )
-        pendingCommandRequests[command] = if(callbacks == null) {
-            listOf(newCallback)
+    private fun processRequest(outgoing: OutgoingPacket, callback: (IncomingPacket?) -> Unit) {
+        if(queuedRequests.isEmpty()) {
+
         } else {
-            callbacks.plus(newCallback)
+            queuedRequests.add(
+                Request(
+                    outgoing = outgoing,
+                    callback = callback
+                )
+            )
         }
     }
 
-    // heartbeat -----------------------------------------------------------------------------------
+    // heartbeat (battery check) -------------------------------------------------------------------
 
-    private val heartbeatScheduler: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
-    private var heartbeatTask: ScheduledFuture<*>? = null
+    private val batteryCheckScheduler: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
+    private var batteryCheckTask: ScheduledFuture<*>? = null
 
-    private fun startHeartbeat() {
-        heartbeatTask?.cancel(true)
-        heartbeatTask = heartbeatScheduler.scheduleWithFixedDelay(this::sendHeartbeat, 0, 10, TimeUnit.SECONDS)
+    private fun startPeriodicBatteryCheck() {
+        batteryCheckTask?.cancel(true)
+        batteryCheckTask = batteryCheckScheduler.scheduleWithFixedDelay(this::sendBatteryCheck, 0, 10, TimeUnit.SECONDS)
     }
 
-    private fun sendHeartbeat() {
-        manager.send(HeartbeatRequestPacket())
-        // clean up expired requests with every heartbeat
-        val now = Date().time
-        val expired = pendingCommandRequests.map { entry -> Pair(entry.key, entry.value.filter { it.expires < now }) }.filter { it.second.isNotEmpty() }
-        if(expired.isNotEmpty()) {
-            expired.forEach { entry ->
-                val unexpired = pendingCommandRequests.get(entry.first)?.filter { it.expires >= now }!!
-                pendingCommandRequests[entry.first] = unexpired
-                entry.second.forEach { callback ->
-                    callback.callback(null)
-                }
-            }
-        }
+    private fun sendBatteryCheck() {
+        manager.send(BatteryLevelRequestPacket())
+
+        // If current request has expired, discard it and send the next one in the queue
     }
 
     private fun stopHeartbeat() {
-        heartbeatTask?.cancel(true)
-        heartbeatTask = null
+        batteryCheckTask?.cancel(true)
+        batteryCheckTask = null
     }
 }
