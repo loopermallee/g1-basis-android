@@ -82,20 +82,21 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
                     Log.d("G1BLEManager", "Empty packet received")
                 }
                 is UnknownIncomingPacket -> {
-                    Log.d("G1BLEManager", "RECEIVE_PACKET ${split[2]} - ${packet}")
+                    Log.d("G1BLEManager", "G1_TRAFFIC_RECEIVE ${split[2]} - ${packet}")
                     Log.d("G1BLEManager", "Unknown packet received")
                 }
 //                is HeartbeatResponsePacket -> {
 //                    Log.d("G1BLEManager", "Heartbeat back!")
 //                }
                 else -> {
-                    Log.d("G1BLEManager", "RECEIVE_PACKET ${split[2]} - ${packet}")
+                    Log.d("G1BLEManager", "G1_TRAFFIC_RECEIVE ${split[2]} - ${packet}")
                     coroutineScope.launch {
                         writableIncoming.emit(packet)
                     }
                 }
             }
         }
+        enableNotifications(readCharacteristic)
     }
 
     //

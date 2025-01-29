@@ -23,17 +23,16 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
-import java.util.Locale
 
 @Composable
 fun ServiceState(status: Int) {
     Text(
         when(status) {
-            G1ServiceState.LOOKING -> "Looking..."
-            G1ServiceState.LOOKED -> "Service Ready."
-            G1ServiceState.READY -> "Service Ready."
-            G1ServiceState.ERROR -> "Service Error."
-            else -> "Service Not Ready."
+            G1ServiceState.LOOKING -> "Scanning..."
+            G1ServiceState.LOOKED -> "Ready"
+            G1ServiceState.READY -> "Ready"
+            G1ServiceState.ERROR -> "Error"
+            else -> "Not Ready"
         }
     )
 }
@@ -49,16 +48,6 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
         ) {
             Text(glasses.name)
             Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
-            if(glasses.batteryPercentage >= 0) {
-                Text(
-                    color = when {
-                      glasses.batteryPercentage > 74 -> Color.Green
-                      glasses.batteryPercentage > 24 -> Color.Yellow
-                      else -> Color.Red
-                    },
-                    text = String.format(Locale.US, "%3d%% battery", glasses.batteryPercentage)
-                )
-            }
         }
         Spacer(modifier = Modifier.weight(1f))
         if(glasses.connectionState == G1Glasses.CONNECTING || glasses.connectionState == G1Glasses.DISCONNECTING) {
@@ -82,25 +71,16 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
 @Composable
 fun GlassesList(status: Int, glasses: Array<G1Glasses>, onConnect: (id: String) -> Unit, onDisconnect: (id: String) -> Unit) {
     if (status == G1ServiceState.LOOKING || (status == G1ServiceState.LOOKED && glasses.isNotEmpty())) {
-        Box(
-            modifier = Modifier.border(1.dp, Color.White, RoundedCornerShape(16.dp)).fillMaxWidth(),
+        Column(
+            modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                glasses.forEach { pair ->
-                    GlassesItem(pair, onConnect = {
-                        onConnect(pair.id)
-                    }, onDisconnect = {
-                        onDisconnect(pair.id)
-                    })
-                }
-                if(status == G1ServiceState.LOOKING) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    )
-                }
+            glasses.forEach { pair ->
+                GlassesItem(pair, onConnect = {
+                    onConnect(pair.id)
+                }, onDisconnect = {
+                    onDisconnect(pair.id)
+                })
             }
         }
     }
@@ -124,29 +104,38 @@ fun GlassesScanner() {
                 modifier = Modifier.border(1.dp, Color.White, RoundedCornerShape(16.dp)),
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if(state.status == G1ServiceState.LOOKING) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 16.dp)
+                        )
+                    }
                     ServiceState(state.status)
                     Spacer(Modifier.weight(1f))
                     Button(
                         enabled = state.status != G1ServiceState.LOOKING,
                         onClick = { viewModel.startLooking() }
                     ) {
-                        Text("Look for G1Glasses")
+                        Text("Scan")
                     }
                 }
             }
-            GlassesList(
-                state.status,
-                state.glasses,
-                onConnect = {
-                    viewModel.connectGlasses(it)
-                },
-                onDisconnect = {
-                    viewModel.disconnectGlasses(it)
-                }
-            )
+            Box(
+                modifier = Modifier.weight(1f).border(1.dp, Color.White, RoundedCornerShape(16.dp)).fillMaxWidth()
+            ) {
+                GlassesList(
+                    state.status,
+                    state.glasses,
+                    onConnect = {
+                        viewModel.connectGlasses(it)
+                    },
+                    onDisconnect = {
+                        viewModel.disconnectGlasses(it)
+                    }
+                )
+            }
         }
     }
 }

@@ -7,7 +7,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import no.nordicsemi.android.ble.data.Data
 import no.nordicsemi.android.ble.ktx.suspend
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import java.util.Date
@@ -15,6 +14,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 internal class G1Device(
     private val scanResult: ScanResult
@@ -121,27 +122,29 @@ internal class G1Device(
         val expires: Long = 0
     )
 
-    private val requestScheduler: ScheduledExecutorService = Executors.newScheduledThreadPool(1)
     private val queuedRequests = mutableListOf<Request>()
     private var currentRequest: Request? = null
 
-    private fun processRequest(outgoing: OutgoingPacket, callback: (IncomingPacket?) -> Unit) {
-        if(queuedRequests.isEmpty()) {
-            currentRequest = Request(
-                outgoing = outgoing,
-                callback = callback,
-                expires = Date().time + REQUEST_EXPIRATION_MILLIS
-            )
-            manager.send(outgoing)
-        } else {
-            queuedRequests.add(
-                Request(
+    private fun sendRequest(outgoing: OutgoingPacket) = manager.send(outgoing)
+
+    private suspend fun sendRequestForResponse(outgoing: OutgoingPacket) =
+        suspendCoroutine<IncomingPacket?> { continuation ->
+            if(queuedRequests.isEmpty()) {
+                currentRequest = Request(
                     outgoing = outgoing,
-                    callback = callback
+                    callback = { incomingPacket -> continuation.resume(incomingPacket) },
+                    expires = Date().time + REQUEST_EXPIRATION_MILLIS
                 )
-            )
+                manager.send(outgoing)
+            } else {
+                queuedRequests.add(
+                    Request(
+                        outgoing = outgoing,
+                        callback = { incomingPacket -> continuation.resume(incomingPacket) }
+                    )
+                )
+            }
         }
-    }
 
     // heartbeat (battery check) -------------------------------------------------------------------
 
