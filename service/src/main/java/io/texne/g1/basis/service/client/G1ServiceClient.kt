@@ -78,4 +78,14 @@ class G1ServiceClient(
     fun disconnect(id: String) {
         service?.disconnectGlasses(id, null)
     }
+
+    //
+
+    suspend fun sendText(id: String, pages: List<List<String>>) = suspendCoroutine<Boolean> { continuation ->
+        service?.sendText(id, pages.map { it.joinToString("\n") }, object: OperationCallback.Stub() {
+            override fun onResult(success: Boolean) {
+                continuation.resume(success)
+            }
+        })
+    }
 }

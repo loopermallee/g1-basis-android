@@ -108,10 +108,6 @@ internal class G1Device(
         manager.disconnect().suspend()
     }
 
-    // requests ------------------------------------------------------------------------------------
-
-    // TODO: methods sending requests to device
-
     // request and response mechanism --------------------------------------------------------------
 
     private val REQUEST_EXPIRATION_MILLIS = 5000
@@ -125,9 +121,9 @@ internal class G1Device(
     private val queuedRequests = mutableListOf<Request>()
     private var currentRequest: Request? = null
 
-    private fun sendRequest(outgoing: OutgoingPacket) = manager.send(outgoing)
+    fun sendRequest(outgoing: OutgoingPacket) = manager.send(outgoing)
 
-    private suspend fun sendRequestForResponse(outgoing: OutgoingPacket) =
+    suspend fun sendRequestForResponse(outgoing: OutgoingPacket) =
         suspendCoroutine<IncomingPacket?> { continuation ->
             if(queuedRequests.isEmpty()) {
                 currentRequest = Request(
@@ -153,7 +149,7 @@ internal class G1Device(
 
     private fun startPeriodicBatteryCheck() {
         batteryCheckTask?.cancel(true)
-        batteryCheckTask = batteryCheckScheduler.scheduleWithFixedDelay(this::sendBatteryCheck, 0, 10, TimeUnit.SECONDS)
+        batteryCheckTask = batteryCheckScheduler.scheduleWithFixedDelay(this::sendBatteryCheck, 0, 15, TimeUnit.SECONDS)
     }
 
     private fun sendBatteryCheck() {

@@ -96,9 +96,11 @@ enum class IncomingPacketType(val byte: Byte?) {
     // 0x29 - observed use by ER app
                                                                                         // 0x2A
     // 0x2B - observed use by ER app
-    BATTERY_LEVEL(0x2C)
+    BATTERY_LEVEL(0x2C),
                                                                                         // 0x2D-0x36
     // 0x37 - observed use by ER app
+                                                                                        // 0x38-0x4D
+    SEND_AI_RESULT(0x4E),
                                                                                         // 0x38-0x6D
     // 0x6E - observed use by ER app
                                                                                         // 0x6F-0xFF
@@ -110,6 +112,7 @@ enum class IncomingPacketType(val byte: Byte?) {
             null -> "EMPTY"
 //            HEARTBEAT.byte -> "HEARTBEAT"
             BATTERY_LEVEL.byte -> "BATTERY_LEVEL"
+            SEND_AI_RESULT.byte -> "SEND_AI_RESULT"
             else -> "UNKNOWN"
         }
 
@@ -119,6 +122,7 @@ enum class IncomingPacketType(val byte: Byte?) {
                 null -> EMPTY
 //                HEARTBEAT.byte -> HEARTBEAT
                 BATTERY_LEVEL.byte -> BATTERY_LEVEL
+                SEND_AI_RESULT.byte -> SEND_AI_RESULT
                 else -> null
             }
     }
@@ -137,21 +141,6 @@ abstract class OutgoingPacket(
     byteArrayOf(type.byte).plus(rest)
 )
 
-abstract class SequencedOutgoingPacket(
-    type: OutgoingPacketType,
-    val sequence: UByte,
-    val subtype: RequestSubType,
-    val data: ByteArray
-): OutgoingPacket(
-    type,
-    byteArrayOf(
-        ((5+data.size) and 0xFF).toByte(),
-        (((5+data.size) shr 8) and 0xFF).toByte(),
-        sequence.toByte(),
-        subtype.byte
-    ).plus(data)
-)
-
 abstract class IncomingPacket(bytes: ByteArray): Packet(bytes) {
 
     val type = IncomingPacketType.from(if(bytes.isEmpty()) null else bytes[0])
@@ -162,8 +151,9 @@ abstract class IncomingPacket(bytes: ByteArray): Packet(bytes) {
                 EmptyIncomingPacket()
             } else {
                 when (bytes[0]) {
-                    // OutgoingPacketType.HEARTBEAT.byte -> HeartbeatResponsePacket(bytes)
-                    OutgoingPacketType.BATTERY_LEVEL.byte -> BatteryLevelResponsePacket(bytes)
+                    // IncomingPacketType.HEARTBEAT.byte -> HeartbeatResponsePacket(bytes)
+                    IncomingPacketType.BATTERY_LEVEL.byte -> BatteryLevelResponsePacket(bytes)
+                    IncomingPacketType.SEND_AI_RESULT.byte -> SendTextResponsePacket(bytes)
                     else -> UnknownIncomingPacket(bytes)
                 }
             }
@@ -189,6 +179,42 @@ class BatteryLevelRequestPacket: OutgoingPacket(
     byteArrayOf(0x01.toByte())
 )
 
+abstract class SendTextPacketBase(
+    text: String,
+    subtype: Int,
+    pageNumber: Int,
+    maxPages: Int
+): OutgoingPacket(
+    OutgoingPacketType.SEND_AI_RESULT,
+    byteArrayOf(
+        0x00.toByte(),
+        0x01.toByte(),
+        0x00.toByte(),
+        subtype.toByte(),
+        0x00.toByte(),
+        0x00.toByte(),
+        pageNumber.toByte(),
+        maxPages.toByte()
+    ).plus(
+        text.encodeToByteArray()
+    )
+)
+
+class SendFirstOfManyTextPacket(
+    maxPages: Int
+): SendTextPacketBase("                    \n                    \n                    \n                    \n                    ", 0x31, 1, maxPages)
+
+class SendTextPacket(
+    pageText: String,
+    pageNumber: Int,
+    maxPages: Int
+): SendTextPacketBase(pageText, 0x30, pageNumber, maxPages)
+
+class SendClosingTextPacket(
+    lastPageText: String,
+    maxPages: Int
+): SendTextPacketBase(lastPageText, 0x40, maxPages, maxPages)
+
 // incoming ////////////////////////////////////////////////////////////////////////////////////////
 
 // heartbeat
@@ -203,6 +229,8 @@ class BatteryLevelResponsePacket(bytes: ByteArray): IncomingPacket(bytes) {
         return "${type} => ${level}%"
     }
 }
+
+class SendTextResponsePacket(bytes: ByteArray): IncomingPacket(bytes)
 
 // empty
 

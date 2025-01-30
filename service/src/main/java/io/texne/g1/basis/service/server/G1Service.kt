@@ -232,6 +232,22 @@ class G1Service: Service() {
                 callback?.onResult(false)
             }
         }
+
+        override fun sendText(
+            id: String?,
+            text: List<String?>?,
+            callback: OperationCallback?
+        ) {
+            if(id != null && text != null) {
+                val glasses = state.value.glasses.get(id)
+                if (glasses != null) {
+                    coroutineScope.launch {
+                        val result = glasses.g1.sendText(text.map { it!!.split("\n") })
+                        callback?.onResult(result)
+                    }
+                }
+            }
+        }
     }
 
     // infrastructure ------------------------------------------------------------------------------

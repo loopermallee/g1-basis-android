@@ -102,6 +102,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
     //
 
     fun send(packet: OutgoingPacket) {
+        Log.d("G1BLEManager", "G1_TRAFFIC_SEND ${packet.bytes.map { String.format("%02x", it) }.joinToString(" ")}")
         writeCharacteristic(writeCharacteristic!!, packet.bytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE).await()
     }
 

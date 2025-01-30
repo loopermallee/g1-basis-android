@@ -30,6 +30,9 @@ class Repository @Inject constructor(
     fun disconnectGlasses(id: String) =
         service.disconnect(id)
 
+    suspend fun sendText(id: String, pages: List<List<String>>) =
+        service.sendText(id, pages)
+
     // ---------------------------------------------------------------------------------------------
 
     private val service = G1ServiceClient(applicationContext)
