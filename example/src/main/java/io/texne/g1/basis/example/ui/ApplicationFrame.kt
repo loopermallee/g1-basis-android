@@ -1,5 +1,6 @@
 package io.texne.g1.basis.example.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,17 +10,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.texne.g1.basis.example.ui.device.ConnectedDevice
 import io.texne.g1.basis.example.ui.scanner.GlassesScanner
 import java.util.Locale
 
@@ -27,13 +30,30 @@ import java.util.Locale
 fun ApplicationFrame() {
     val connectedGlasses = hiltViewModel<ApplicationFrameViewModel>().connectedGlasses.collectAsState().value
     var selectedTab by remember { mutableIntStateOf(0) }
+    var previouslyConnected by remember { mutableStateOf(connectedGlasses.isNotEmpty()) }
+
+    LaunchedEffect(previouslyConnected, connectedGlasses) {
+        if(connectedGlasses.isNotEmpty()) {
+            if(previouslyConnected.not()) {
+                selectedTab = 1
+                previouslyConnected = true
+            }
+        } else {
+            previouslyConnected = false
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         TabRow(
-            selectedTabIndex = selectedTab
+            selectedTabIndex = selectedTab,
+            indicator = {}
         ) {
             Box(
-                modifier = Modifier.height(64.dp).fillMaxSize().clickable(onClick = { selectedTab = 0 }),
+                modifier = Modifier
+                    .height(64.dp)
+                    .fillMaxSize()
+                    .clickable(onClick = { selectedTab = 0 })
+                    .background(if (selectedTab == 0) Color.DarkGray else Color.Transparent),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -42,7 +62,11 @@ fun ApplicationFrame() {
             }
             connectedGlasses.forEachIndexed { index, glasses ->
                 Box(
-                    modifier = Modifier.height(64.dp).fillMaxSize().clickable(onClick = { selectedTab = index+1 }),
+                    modifier = Modifier
+                        .height(64.dp)
+                        .fillMaxSize()
+                        .clickable(onClick = { selectedTab = index + 1 })
+                        .background(if (selectedTab == index + 1) Color.DarkGray else Color.Transparent),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
@@ -72,7 +96,7 @@ fun ApplicationFrame() {
                     GlassesScanner()
                 }
                 else -> {
-                    Text("DEVICE")
+                    ConnectedDevice(glasses = connectedGlasses[selectedTab-1])
                 }
             }
         }

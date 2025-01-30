@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -23,6 +24,7 @@ import no.nordicsemi.android.support.v18.scanner.ScanResult
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
 import kotlin.time.Duration
 
+@OptIn(DelicateCoroutinesApi::class)
 internal fun <T1, T2, R> StateFlow<T1>.combineState(
     flow2: StateFlow<T2>,
     scope: CoroutineScope = GlobalScope,
