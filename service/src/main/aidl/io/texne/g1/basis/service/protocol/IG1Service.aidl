@@ -9,5 +9,6 @@ interface IG1Service {
     void lookForGlasses();
     void connectGlasses(String id, @nullable OperationCallback callback);
     void disconnectGlasses(String id, @nullable OperationCallback callback);
-    void sendText(String id, in List<String> text, @nullable OperationCallback callback);
+    void displayTextPage(String id, in String[5] page, @nullable OperationCallback callback);
+    void stopDisplaying(String id, @nullable OperationCallback callback);
 }

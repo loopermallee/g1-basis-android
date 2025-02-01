@@ -81,8 +81,16 @@ class G1ServiceClient(
 
     //
 
-    suspend fun sendText(id: String, pages: List<List<String>>) = suspendCoroutine<Boolean> { continuation ->
-        service?.sendText(id, pages.map { it.joinToString("\n") }, object: OperationCallback.Stub() {
+    suspend fun displayTextPage(id: String, page: List<String>) = suspendCoroutine<Boolean> { continuation ->
+        service?.displayTextPage(id, page.toTypedArray(), object: OperationCallback.Stub() {
+            override fun onResult(success: Boolean) {
+                continuation.resume(success)
+            }
+        })
+    }
+
+    suspend fun stopDisplaying(id: String) = suspendCoroutine<Boolean> { continuation ->
+        service?.stopDisplaying(id, object: OperationCallback.Stub() {
             override fun onResult(success: Boolean) {
                 continuation.resume(success)
             }

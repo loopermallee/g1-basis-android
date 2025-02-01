@@ -127,71 +127,39 @@ class G1 {
 
     // requests ------------------------------------------------------------------------------------
 
-    suspend fun sendText(pages: List<List<String>>): Boolean {
-        if(pages.isEmpty()) {
+    suspend fun displayTextPage(page: List<String>): Boolean {
+        if(page.isEmpty() || page.size != 5 || page.any { it.length != 40 }) {
             return false
         }
-
-        val cleanedPages = pages.map { it.joinToString("\n") } //pages.map { it.slice(0..it.size.coerceAtMost(5)-1).map { it.substring(0, it.length.coerceAtMost(20)) }.joinToString("\n") }
-
+        val singleStringPage = page.joinToString("\n")
         if(left.sendRequestForResponse(
-            SendFirstOfManyTextPacket(
-                cleanedPages.size
-            )
-        ) == null) {
-            return false
-        }
-        delay(100)
-        if(right.sendRequestForResponse(
-            SendFirstOfManyTextPacket(
-                cleanedPages.size
-            )
-        ) == null) {
-            return false
-        }
-        delay(100)
-
-        cleanedPages.forEachIndexed { ix, page ->
-            if(left.sendRequestForResponse(
-                    SendTextPacket(
-                        page,
-                        ix+1,
-                        cleanedPages.size
-                    )
-                ) == null) {
-                return false
-            }
-            if(right.sendRequestForResponse(
-                    SendTextPacket(
-                        page,
-                        ix+1,
-                        cleanedPages.size
-                    )
-                ) == null) {
-                return false
-            }
-            if(ix < cleanedPages.size-1) {
-                delay(3000)
-            }
-        }
-
-        if(left.sendRequestForResponse(
-                SendClosingTextPacket(
-                    cleanedPages[cleanedPages.size-1],
-                    cleanedPages.size
+                SendTextPacket(
+                    singleStringPage,
+                    1,
+                    1
                 )
             ) == null) {
             return false
         }
         if(right.sendRequestForResponse(
-                SendClosingTextPacket(
-                    cleanedPages[cleanedPages.size-1],
-                    cleanedPages.size
+                SendTextPacket(
+                    singleStringPage,
+                    1,
+                    1
                 )
             ) == null) {
             return false
         }
+        return true
+    }
 
+    suspend fun stopDisplaying(): Boolean {
+        if(left.sendRequestForResponse(ExitRequestPacket()) == null) {
+            return false
+        }
+        if(right.sendRequestForResponse(ExitRequestPacket()) == null) {
+            return false
+        }
         return true
     }
 

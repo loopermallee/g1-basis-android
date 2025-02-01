@@ -233,16 +233,28 @@ class G1Service: Service() {
             }
         }
 
-        override fun sendText(
+        override fun displayTextPage(
             id: String?,
-            text: List<String?>?,
+            page: Array<out String?>?,
             callback: OperationCallback?
         ) {
-            if(id != null && text != null) {
+            if(id != null && page != null) {
                 val glasses = state.value.glasses.get(id)
                 if (glasses != null) {
                     coroutineScope.launch {
-                        val result = glasses.g1.sendText(text.map { it!!.split("\n") })
+                        val result = glasses.g1.displayTextPage(page.filterNotNull())
+                        callback?.onResult(result)
+                    }
+                }
+            }
+        }
+
+        override fun stopDisplaying(id: String?, callback: OperationCallback?) {
+            if(id != null) {
+                val glasses = state.value.glasses.get(id)
+                if (glasses != null) {
+                    coroutineScope.launch {
+                        val result = glasses.g1.stopDisplaying()
                         callback?.onResult(result)
                     }
                 }

@@ -66,7 +66,7 @@ internal class G1Device(
                         else -> {
                             // is this the response we're expecting?
                             val request = currentRequest
-                            if(request != null && request.outgoing.type.byte == packet.type?.byte) {
+                            if(request != null && packet.responseTo == request.outgoing.type) {
                                 // service the request, and advance the queue
                                 request.callback.invoke(packet)
                                 val nextRequest = queuedRequests.removeFirstOrNull()

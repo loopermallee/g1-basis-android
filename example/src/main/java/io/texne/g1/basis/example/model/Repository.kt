@@ -30,8 +30,9 @@ class Repository @Inject constructor(
     fun disconnectGlasses(id: String) =
         service.disconnect(id)
 
-    suspend fun sendText(id: String, pages: List<List<String>>) =
-        service.sendText(id, pages)
+    suspend fun sendText(id: String, pages: List<List<String>>) {
+        // TODO
+    }
 
     // ---------------------------------------------------------------------------------------------
 

@@ -35,31 +35,43 @@ class DisplayTextViewModel @Inject constructor(
 
     fun showText() {
         viewModelScope.launch {
-            writableState.value = state.value.copy(
-                sending = true,
-                error = false
-            )
-            if(repository.sendText(glasses, listOf(
-                listOf(
-                    "This is a test message",
-                ),
-                listOf(
-                    "This is another message",
-                ),
-                listOf(
-                    "This is yet another another message",
-                ),
-            ))) {
-                writableState.value = state.value.copy(
-                    sending = false,
-                    error = false
-                )
-            } else {
-                writableState.value = state.value.copy(
-                    sending = false,
-                    error = true
-                )
-            }
+//            writableState.value = state.value.copy(
+//                sending = true,
+//                error = false
+//            )
+//            if(repository.sendText(glasses, listOf(
+//                listOf(
+//                    "Test A Test A Test A Test A Test A",
+//                    "Test A Test A Test A Test A Test A",
+//                    "Test A Test A Test A Test A Test A",
+//                    "Test A Test A Test A Test A Test A",
+//                    "Test A Test A Test A Test A Test A",
+//                ),
+//                listOf(
+//                    "Test B Test B Test B Test B Test B",
+//                    "Test B Test B Test B Test B Test B",
+//                    "Test B Test B Test B Test B Test B",
+//                    "Test B Test B Test B Test B Test B",
+//                    "Test B Test B Test B Test B Test B",
+//                ),
+//                listOf(
+//                    "Test C Test C Test C Test C Test C",
+//                    "Test C Test C Test C Test C Test C",
+//                    "Test C Test C Test C Test C Test C",
+//                    "Test C Test C Test C Test C Test C",
+//                    "Test C Test C Test C Test C Test C",
+//                ),
+//            ))) {
+//                writableState.value = state.value.copy(
+//                    sending = false,
+//                    error = false
+//                )
+//            } else {
+//                writableState.value = state.value.copy(
+//                    sending = false,
+//                    error = true
+//                )
+//            }
         }
     }
 }
