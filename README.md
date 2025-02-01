@@ -103,18 +103,18 @@ client.disconnect(id)
 
 The basic facility to display text immediately is the suspend function
 
-``kotlin
+```kotlin
 val success = client.displayTextPage(id, page)
-``
+```
 
 where id is the glasses id, and page is a list of a maximum of five strings of a maximum 40-character width.
 This call displays the text immediately as it is formatted, and leaves it on the display.
 
 To stop displaying text, call
 
-``kotlin
+```kotlin
 val success = client.stopDisplaying(id)
-``
+```
 
 this clears the text and goes back to the previous context (screen off, dashboard).
 
