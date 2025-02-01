@@ -134,7 +134,7 @@ You can call
 val success = client.displayFormattedPage(id, formattedPage)
 ```
 
-where formattedPage is a
+where
 
 ```kotlin
 data class FormattedPage(
@@ -151,6 +151,45 @@ data class FormattedLine(
 
 enum class JustifyLine { LEFT, RIGHT, CENTER }
 ```
+
+this allows you to center text horizontally and vertically. 
+This method displays text immediately and indefinitely until it is removed with client.stopDisplaying().
+
+You can also have it automatically removed with
+
+```kotlin
+val success = client.displayTimedFormattedPage(id, timedFormattedPage)
+```
+
+where
+
+```kotlin
+data class TimedFormattedPage(
+    val page: FormattedPage,
+    val milliseconds: Long
+)
+```
+
+### 6. Displaying Formatted Page Sequences
+
+You can also display a sequence of formatted pages, each with its own duration:
+
+```kotlin
+val success = client.displayFormattedPageSequence(id, sequence)
+```
+
+where sequence is a list of TimedFormattedPage.
+
+### 7. Quick Convenience Centered Text Timed Display
+
+Finally, the convenience method:
+
+```kotlin
+val success = client.displayCentered(id, textLines, milliseconds)
+```
+
+displays the list of strings (maximum five strings of 40 characters limit each) centered on the screen for the duration of milliseconds, or permanently if null.
+The default for milliseconds is 2000.
 
 ## Example
 The **example** module contains a Compose application that demonstrates use of the service. 
