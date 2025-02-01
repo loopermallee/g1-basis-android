@@ -13,6 +13,16 @@ The **service** module implements a shared Android service that multiple applica
 Applications interface with the service using the AIDL-defined generated code and a simple wrapper that exposes the service using coroutines and flow the way the Core library does.
 The service also handles requesting the necessary permissions at runtime, so calling applications do not have to.
 
+### Service Wrapper
+
+Initialize the client by calling
+
+```
+val client = G1ServiceClient(applicationContext)
+```
+
+this starts the service (if it is not already running) and connects to it.
+
 *(more details coming soon)*
 
 ## Example
