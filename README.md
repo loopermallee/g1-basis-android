@@ -15,13 +15,29 @@ The service also handles requesting the necessary permissions at runtime, so cal
 
 ### Service Wrapper
 
+#### Initialization
+
 Initialize the client by calling
 
 ```
 val client = G1ServiceClient(applicationContext)
 ```
 
-this starts the service (if it is not already running) and connects to it.
+To starts the service (if it is not already running) and connect to it, call
+
+```
+val success = service.open()
+```
+
+Similarly, when you do not need to use the service anymore, call
+
+```
+service.close()
+```
+
+In the example application (a single-activity Compose app) open() is called in the activity's onCreate() and close() is called in the onDestroy().
+
+
 
 *(more details coming soon)*
 
