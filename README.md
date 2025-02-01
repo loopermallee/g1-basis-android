@@ -19,7 +19,7 @@ The service also handles requesting the necessary permissions at runtime, so cal
 
 Initialize the client by calling
 
-```
+```kotlin
 val client = G1ServiceClient(applicationContext)
 val success = client.open()
 ```
@@ -27,7 +27,7 @@ val success = client.open()
 This starts the service (if it is not already running) and connects to it.
 Similarly, when you do not need to use the service anymore, call
 
-```
+```kotlin
 client.close()
 ```
 
@@ -35,13 +35,13 @@ In the example application (a single-activity Compose app) open() is called in t
 
 The client exposes its state through
 
-```
+```kotlin
 client.state
 ```
 
 client.state is a StateFlow that is null if the service is initalizing, or type 
 
-```
+```kotlin
 data class G1ServiceState(
   val status: Int, 
     // values can be
@@ -54,7 +54,7 @@ data class G1ServiceState(
 )
 ```
 
-```
+```kotlin
 data class G1Glasses(
   val id: String,
     // unique id for glasses, treat as opaque (constructed from device MAC)
@@ -72,6 +72,22 @@ data class G1Glasses(
     // the percentage battery left of the side that has the least left
 )
 ```
+
+To start scanning for glasses, call 
+
+```kotlin
+client.lookForGlasses()
+```
+
+The function will scan for glasses for 15 seconds. The client.state flow will update as changes occur. 
+To connect to a pair of glasses, call the suspend function
+
+```kotlin
+val success = client.connect(id: String)
+```
+
+in a coroutine scope, using the id of the glasses you want to connect.  
+The client.state will update as changes in connection state of the glasses occur. 
 
 *(more details coming soon)*
 
