@@ -15,7 +15,7 @@ The service also handles requesting the necessary permissions at runtime, so cal
 
 ### Service Wrapper
 
-#### Initialization
+#### 1. Initialization
 
 Initialize the client by calling
 
