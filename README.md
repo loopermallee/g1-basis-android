@@ -33,7 +33,43 @@ client.close()
 
 In the example application (a single-activity Compose app) open() is called in the activity's onCreate() and close() is called in the onDestroy().
 
+The client exposes its state through
 
+```
+client.state
+```
+
+client.state is a StateFlow that is null if the service is initalizing, or type 
+
+```
+data class G1ServiceState(
+  val status: Int, 
+    // values can be
+    //    G1ServiceState.READY - the service is initialized and ready to scan for glasses
+    //    G1ServiceState.LOOKING - the service is scanning for glasses
+    //    G1ServiceState.LOOKED - the service has looked for glasses and is ready to look again
+    //    G1ServiceState.ERROR - the service encountered an error looking for glasses
+  val glasses: Array<G1Glasses>
+    // glasses that the service has found
+)
+```
+
+```
+data class G1Glasses(
+  val id: String,
+    // unique id for glasses, treat as opaque (constructed from device MAC)
+  val name: String,
+    // label for glasses
+  val connectionState: Int,
+    // values can be
+    //    G1ServiceState.UNINITIALIZED - the service is just setting the glasses up to connect
+    //    G1ServiceState.DISCONNECTED - the glasses are not connected
+    //    G1ServiceState.CONNECTING - the service is connecting to the glasses
+    //    G1ServiceState.CONNECTED - the glasses are ready to use
+    //    G1ServiceState.DISCONNECTING - the service is disconnecting from the glasses
+    //    G1ServiceState.ERROR - an error ocurred while setting up or connecting the glasses
+)
+```
 
 *(more details coming soon)*
 
