@@ -13,9 +13,7 @@ The **service** module implements a shared Android service that multiple applica
 Applications interface with the service using the AIDL-defined generated code and a simple wrapper that exposes the service using coroutines and flow the way the Core library does.
 The service also handles requesting the necessary permissions at runtime, so calling applications do not have to.
 
-### Service Wrapper
-
-#### 1. Initialization
+### 1. Initialization
 
 Initialize the client by calling
 
@@ -32,6 +30,8 @@ client.close()
 ```
 
 In the example application (a single-activity Compose app) open() is called in the activity's onCreate() and close() is called in the onDestroy().
+
+### 2. Service State
 
 The client exposes its state through
 
@@ -73,6 +73,8 @@ data class G1Glasses(
 )
 ```
 
+### 3. Scanning for Glasses
+
 To start scanning for glasses, call 
 
 ```kotlin
@@ -80,14 +82,24 @@ client.lookForGlasses()
 ```
 
 The function will scan for glasses for 15 seconds. The client.state flow will update as changes occur. 
+
+### 4. Connecting and Disconnecting
+
 To connect to a pair of glasses, call the suspend function
 
 ```kotlin
-val success = client.connect(id: String)
+val success = client.connect(id)
 ```
 
 in a coroutine scope, using the id of the glasses you want to connect.  
-The client.state will update as changes in connection state of the glasses occur. 
+The client.state will update as changes in connection state of the glasses occur.
+Similarly, to disconnect, invoke
+
+```kotlin
+client.disconnect(id)
+```
+
+### 4. Displaying Text
 
 *(more details coming soon)*
 
