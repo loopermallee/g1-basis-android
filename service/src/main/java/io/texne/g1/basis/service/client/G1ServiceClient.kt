@@ -182,7 +182,6 @@ class G1ServiceClient(
     }
 
     suspend fun displayTextPage(id: String, page: List<String>) = suspendCoroutine<Boolean> { continuation ->
-        val chars = page.fold(String()) { acc, str -> acc + str }
         service?.displayTextPage(id, page.toTypedArray(), object: OperationCallback.Stub() {
             override fun onResult(success: Boolean) {
                 continuation.resume(success)
