@@ -128,10 +128,19 @@ class G1 {
     // requests ------------------------------------------------------------------------------------
 
     suspend fun displayTextPage(page: List<String>): Boolean {
-        if(page.isEmpty() || page.size != 5 || page.any { it.length != 40 }) {
-            return false
+        val paddedLines = page.map { it.padEnd(40, ' ') }
+        val paddedPage = when {
+            paddedLines.size == 5 -> paddedLines
+            paddedLines.size < 5 -> {
+                val padded = paddedLines.toMutableList()
+                repeat(5 - paddedLines.size) {
+                    padded.plus(" ".repeat(40))
+                }
+                padded
+            }
+            else -> paddedLines.slice(0..4)
         }
-        val singleStringPage = page.joinToString("\n")
+        val singleStringPage = paddedPage.joinToString("\n")
         if(left.sendRequestForResponse(
                 SendTextPacket(
                     singleStringPage,

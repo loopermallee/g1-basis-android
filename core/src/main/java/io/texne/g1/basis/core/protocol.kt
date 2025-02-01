@@ -148,7 +148,7 @@ class SendTextPacket(
 abstract class IncomingPacket(val type: IncomingPacketType, val bytes: ByteArray, val responseTo: OutgoingPacketType? = null) {
     companion object {
         fun fromBytes(bytes: ByteArray): IncomingPacket? =
-            IncomingPacketType.entries.firstOrNull { it.isType(bytes) }?.factory!!.invoke(bytes)
+            IncomingPacketType.entries.firstOrNull { it.isType(bytes) }?.factory?.invoke(bytes)
     }
 }
 
