@@ -2,7 +2,11 @@ package io.texne.g1.basis.example.model
 
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.texne.g1.basis.service.client.FormattedLine
+import io.texne.g1.basis.service.client.FormattedPage
 import io.texne.g1.basis.service.client.G1ServiceClient
+import io.texne.g1.basis.service.client.JustifyLine
+import io.texne.g1.basis.service.client.JustifyPage
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,7 +35,7 @@ class Repository @Inject constructor(
         service.disconnect(id)
 
     suspend fun sendText(id: String): Boolean {
-        return service.displayTextPage(id, listOf("Hi baby!"))
+        return service.displayCentered(id, listOf("This is a test", "of centered text", "for two seconds"))
     }
 
     // ---------------------------------------------------------------------------------------------

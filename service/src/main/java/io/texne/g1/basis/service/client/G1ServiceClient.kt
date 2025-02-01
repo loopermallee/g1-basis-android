@@ -34,6 +34,8 @@ data class TimedFormattedPage(
     val milliseconds: Long
 )
 
+const val SPACE_FILL_MULTIPLIER = 2
+
 class G1ServiceClient(
     private val context: Context
 ): Closeable {
@@ -102,7 +104,7 @@ class G1ServiceClient(
 
     suspend fun displayFormattedPageSequence(id: String, sequence: List<TimedFormattedPage>): Boolean {
         sequence.forEach { timedPage ->
-            if(displayFormattedPage(id, timedPage.page)) {
+            if(!displayFormattedPage(id, timedPage.page)) {
                 return false
             }
             delay(timedPage.milliseconds)
@@ -111,11 +113,26 @@ class G1ServiceClient(
     }
 
     suspend fun displayTimedFormattedPage(id: String, timedFormattedPage: TimedFormattedPage): Boolean {
-        if(displayFormattedPage(id, timedFormattedPage.page)) {
+        if(!displayFormattedPage(id, timedFormattedPage.page)) {
             return false
         }
         delay(timedFormattedPage.milliseconds)
         return stopDisplaying(id)
+    }
+
+    suspend fun displayCentered(id: String, lines: List<String>, milliseconds: Long? = 2000): Boolean {
+        return if(milliseconds == null) displayFormattedPage(id, FormattedPage(
+            justify = JustifyPage.CENTER,
+            lines = lines.map { FormattedLine(text = it, justify = JustifyLine.CENTER) }
+        )) else displayTimedFormattedPage( id,
+            TimedFormattedPage(
+                page = FormattedPage(
+                    justify = JustifyPage.CENTER,
+                    lines = lines.map { FormattedLine(text = it, justify = JustifyLine.CENTER) }
+                ),
+                milliseconds = milliseconds
+            )
+        )
     }
 
     suspend fun displayFormattedPage(id: String, formattedPage: FormattedPage): Boolean {
@@ -124,34 +141,34 @@ class G1ServiceClient(
         }
         val renderedLines = formattedPage.lines.map {
             when(it.justify) {
-                JustifyLine.LEFT -> it.text.plus(" ".repeat(40 - it.text.length))
-                JustifyLine.CENTER -> " ".repeat((40 - it.text.length)/2).plus(it.text).plus(" ".repeat(40-((40 - it.text.length)/2)))
-                JustifyLine.RIGHT -> " ".repeat(40 - it.text.length).plus(it.text)
+                JustifyLine.LEFT -> it.text
+                JustifyLine.CENTER -> " ".repeat((SPACE_FILL_MULTIPLIER*(40 - it.text.length)/2).toInt()).plus(it.text)
+                JustifyLine.RIGHT -> " ".repeat((SPACE_FILL_MULTIPLIER*(40 - it.text.length)).toInt()).plus(it.text)
             }
         }
         val renderedPage: List<String> = when(formattedPage.lines.size) {
             5 -> renderedLines
             4 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(" ".repeat(40))
-                JustifyPage.BOTTOM -> listOf(" ".repeat(40)).plus(renderedLines)
-                JustifyPage.CENTER -> renderedLines.plus(" ".repeat(40))
+                JustifyPage.TOP -> renderedLines.plus("")
+                JustifyPage.BOTTOM -> listOf("").plus(renderedLines)
+                JustifyPage.CENTER -> renderedLines.plus("")
             }
             3 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(" ".repeat(40)).plus(" ".repeat(40))
-                JustifyPage.BOTTOM -> listOf(" ".repeat(40)).plus(" ".repeat(40)).plus(renderedLines)
-                JustifyPage.CENTER -> listOf(" ".repeat(40)).plus(renderedLines).plus(" ".repeat(40))
+                JustifyPage.TOP -> renderedLines.plus(listOf("", ""))
+                JustifyPage.BOTTOM -> listOf("", "").plus(renderedLines)
+                JustifyPage.CENTER -> listOf("").plus(renderedLines).plus("")
             }
             2 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(" ".repeat(40)).plus(" ".repeat(40))
-                JustifyPage.BOTTOM -> listOf(" ".repeat(40)).plus(" ".repeat(40)).plus(renderedLines)
-                JustifyPage.CENTER -> listOf(" ".repeat(40)).plus(renderedLines).plus(" ".repeat(40))
+                JustifyPage.TOP -> renderedLines.plus(listOf("", "", ""))
+                JustifyPage.BOTTOM -> listOf("", "", "").plus(renderedLines)
+                JustifyPage.CENTER -> listOf("").plus(renderedLines).plus(listOf("", ""))
             }
             1 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(" ".repeat(40)).plus(" ".repeat(40)).plus(" ".repeat(40)).plus(" ".repeat(40))
-                JustifyPage.BOTTOM -> listOf(" ".repeat(40)).plus(" ".repeat(40)).plus(" ".repeat(40)).plus(" ".repeat(40)).plus(renderedLines)
-                JustifyPage.CENTER -> listOf(" ".repeat(40)).plus(" ".repeat(40)).plus(renderedLines).plus(" ".repeat(40)).plus(" ".repeat(40))
+                JustifyPage.TOP -> renderedLines.plus(listOf("", "", "", ""))
+                JustifyPage.BOTTOM -> listOf("", "", "", "").plus(renderedLines)
+                JustifyPage.CENTER -> listOf("", "").plus(renderedLines).plus(listOf("", ""))
             }
-            else -> listOf(" ".repeat(40)," ".repeat(40)," ".repeat(40)," ".repeat(40)," ".repeat(40))
+            else -> listOf("", "", "", "", "")
         }
         return displayTextPage(id, renderedPage)
     }
@@ -165,6 +182,7 @@ class G1ServiceClient(
     }
 
     suspend fun displayTextPage(id: String, page: List<String>) = suspendCoroutine<Boolean> { continuation ->
+        val chars = page.fold(String()) { acc, str -> acc + str }
         service?.displayTextPage(id, page.toTypedArray(), object: OperationCallback.Stub() {
             override fun onResult(success: Boolean) {
                 continuation.resume(success)
