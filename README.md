@@ -68,6 +68,8 @@ data class G1Glasses(
     //    G1ServiceState.CONNECTED - the glasses are ready to use
     //    G1ServiceState.DISCONNECTING - the service is disconnecting from the glasses
     //    G1ServiceState.ERROR - an error ocurred while setting up or connecting the glasses
+  val batteryPercentage: Int,
+    // the percentage battery left of the side that has the least left
 )
 ```
 
