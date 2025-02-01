@@ -99,7 +99,7 @@ Similarly, to disconnect, invoke
 client.disconnect(id)
 ```
 
-### 4. Displaying Text
+### 4. Displaying Unformatted Text
 
 The basic facility to display text immediately is the suspend function
 
@@ -107,7 +107,7 @@ The basic facility to display text immediately is the suspend function
 val success = client.displayTextPage(id, page)
 ```
 
-where id is the glasses id, and page is a list of a maximum of five strings of a maximum 40-character width.
+where id is the glasses id, and page is a list of a maximum of five strings of a maximum 40-character width each.
 This call displays the text immediately as it is formatted, and leaves it on the display.
 
 To stop displaying text, call
@@ -117,10 +117,40 @@ val success = client.stopDisplaying(id)
 ```
 
 this clears the text and goes back to the previous context (screen off, dashboard).
+To automatically remove the text after a given amount of time, call
 
+```kotlin
+val success = client.displayTimedTextPage(id, page, milliseconds)
+```
 
+where milliseconds is how long to display the text before it disappears.
 
-*(more details coming soon)*
+### 5. Displaying Formatted Text
+
+The client includes convenience methods to format text automatically for the display.
+You can call
+
+```kotlin
+val success = client.displayFormattedPage(id, formattedPage)
+```
+
+where formattedPage is a
+
+```kotlin
+data class FormattedPage(
+    val lines: List<FormattedLine>,
+    val justify: JustifyPage
+)
+
+enum class JustifyPage { TOP, BOTTOM, CENTER }
+
+data class FormattedLine(
+    val text: String,
+    val justify: JustifyLine
+)
+
+enum class JustifyLine { LEFT, RIGHT, CENTER }
+```
 
 ## Example
 The **example** module contains a Compose application that demonstrates use of the service. 
