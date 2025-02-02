@@ -270,7 +270,15 @@ class G1Service: Service() {
 
     private fun withPermissions(block: () -> Unit) {
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Permissions.check(this@G1Service, arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN),
+            Permissions.check(this@G1Service,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) arrayOf(
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) else arrayOf(
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_SCAN,
+                ),
                 "Please provide the permissions so the service can interact with the G1 G1Glasses",
                 Permissions.Options().setCreateNewTask(true),
                 object: PermissionHandler() {

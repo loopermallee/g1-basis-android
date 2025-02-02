@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="notification_channel_name">G1 Basis Service</string>
+    <string name="notification_channel_name">Basis Service</string>
     <string name="notification_channel_description">Notifications about the service managing the G1 glasses</string>
-    <string name="notification_text">The G1 glasses service is running.</string>
+    <string name="notification_text">The Basis service for G1 glasses is running.</string>
 </resources>
