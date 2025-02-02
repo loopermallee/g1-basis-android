@@ -83,7 +83,7 @@ data class G1Glasses(
 )
 ```
 
-### 3. Scanning for Glasses (NOT FOR CLIENT-ONLY APPS)
+### 3. Scanning for Glasses (FOR MANAGING APPS)
 
 To start scanning for glasses, call 
 
@@ -93,7 +93,7 @@ client.lookForGlasses()
 
 The function will scan for glasses for 15 seconds. The client.state flow will update as changes occur. 
 
-### 4. Connecting and Disconnecting (NOT FOR CLIENT-ONLY APPS)
+### 4. Connecting and Disconnecting (FOR MANAGING APPS)
 
 To connect to a pair of glasses, call the suspend function
 
