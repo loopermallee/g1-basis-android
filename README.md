@@ -4,7 +4,7 @@ Open, multipurpose infrastructure for writing Android applications that talk to 
 ## Core
 The **core** module contains the source code to the core library. 
 This library allows for interfacing directly with the glasses through a simple abstraction that uses modern Android and Kotlin features like coroutines and Flow. 
-When using this library directly, only one application can connect to and interface with the glasses at one time. The basis core lirbary is used under the hood by the **service**.
+When using this library directly, only one application can connect to and interface with the glasses at one time. The basis core library is used under the hood by the **service**.
 
 *(more details coming soon)*
 
@@ -13,13 +13,23 @@ The **service** module implements a shared Android service that multiple applica
 Applications interface with the service using the AIDL-defined generated code and a simple wrapper that exposes the service using coroutines and flow the way the Core library does.
 The service also handles requesting the necessary permissions at runtime, so calling applications do not have to.
 
+## AIDL
+The **aidl** module contains the specification of the RPC protocol between the client and service.  
+It is the glue that makes it possible for multiple apps using the client to share the service (and access to the glasses).
+Both the **client** and **service** module require it, but you would not need to include it or use it directly.
+
+## Client
+The **client** module implements a simple native interface to the shared service.
+
 ### 1. Initialization
 
 Initialize the client by calling
 
 ```kotlin
-val client = G1ServiceClient(applicationContext)
-val success = client.open()
+val client = G1ServiceClient.open(applicationContext)
+if(client == null) {
+    // ERROR
+}
 ```
 
 This starts the service (if it is not already running) and connects to it.
@@ -73,7 +83,7 @@ data class G1Glasses(
 )
 ```
 
-### 3. Scanning for Glasses
+### 3. Scanning for Glasses (NOT FOR CLIENT-ONLY APPS)
 
 To start scanning for glasses, call 
 
@@ -83,7 +93,7 @@ client.lookForGlasses()
 
 The function will scan for glasses for 15 seconds. The client.state flow will update as changes occur. 
 
-### 4. Connecting and Disconnecting
+### 4. Connecting and Disconnecting (NOT FOR CLIENT-ONLY APPS)
 
 To connect to a pair of glasses, call the suspend function
 
@@ -99,7 +109,17 @@ Similarly, to disconnect, invoke
 client.disconnect(id)
 ```
 
-### 4. Displaying Unformatted Text
+### 5. Listing Connected Glasses
+
+If an app wishes to only use connected glasses, and not manage them, it can just call this to list the currently connected Glasses.
+
+```kotlin
+val glasses = client.listConnectedGlasses()
+```
+
+It returns a List<Glasses> or null if the service is not initialized or reachable
+
+### 6. Displaying Unformatted Text
 
 The basic facility to display text immediately is the suspend function
 
@@ -125,7 +145,7 @@ val success = client.displayTimedTextPage(id, page, milliseconds)
 
 where milliseconds is how long to display the text before it disappears.
 
-### 5. Displaying Formatted Text
+### 7. Displaying Formatted Text
 
 The client includes convenience methods to format text automatically for the display.
 You can call
@@ -170,7 +190,7 @@ data class TimedFormattedPage(
 )
 ```
 
-### 6. Displaying Formatted Page Sequences
+### 8. Displaying Formatted Page Sequences
 
 You can also display a sequence of formatted pages, each with its own duration:
 
@@ -180,7 +200,7 @@ val success = client.displayFormattedPageSequence(id, sequence)
 
 where sequence is a list of TimedFormattedPage.
 
-### 7. Quick Convenience Centered Text Timed Display
+### 9. Quick Convenience Centered Text Timed Display
 
 Finally, the convenience method:
 
@@ -194,5 +214,6 @@ The default for milliseconds is 2000.
 ## Example
 The **example** module contains a Compose application that demonstrates use of the service. 
 The application can seamlessly and reliably discover, connect and disconnect, and send commands to glasses.
+Because the application is a standalone example, it includes both the client and service modules.
 
 *(more details coming soon)*

@@ -1,6 +1,5 @@
-package io.texne.g1.basis.service.server
+package io.texne.g1.basis.service
 
-import io.texne.g1.basis.service.R
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -22,10 +21,10 @@ import com.nabinbhandari.android.permissions.PermissionHandler
 import com.nabinbhandari.android.permissions.Permissions
 import io.texne.g1.basis.core.G1
 import io.texne.g1.basis.service.protocol.G1Glasses
-import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
 import io.texne.g1.basis.service.protocol.OperationCallback
 import io.texne.g1.basis.service.protocol.G1ServiceState
+import io.texne.g1.basis.service.protocol.IG1Service
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -303,7 +302,7 @@ class G1Service: Service() {
                 val notificationChannel = NotificationChannel(
                     G1_SERVICE_NOTIFICATION_CHANNEL_ID,
                     getString(R.string.notification_channel_name),
-                    NotificationManager.IMPORTANCE_MIN
+                    NotificationManager.IMPORTANCE_DEFAULT
                 )
                 notificationChannel.description =
                     getString(R.string.notification_channel_description)

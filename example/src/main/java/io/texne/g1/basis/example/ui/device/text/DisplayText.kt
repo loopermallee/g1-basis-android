@@ -11,10 +11,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import io.texne.g1.basis.service.protocol.G1Glasses
+import io.texne.g1.basis.client.G1ServiceClient.Glasses
 
 @Composable
-fun DisplayText(glasses: G1Glasses) {
+fun DisplayText(glasses: Glasses) {
     val viewModel = hiltViewModel<DisplayTextViewModel>()
     val state = viewModel.state.collectAsState().value
 

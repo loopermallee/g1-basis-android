@@ -23,3 +23,5 @@ rootProject.name = "basis"
 include(":core")
 include(":service")
 include(":example")
+include(":client")
+include(":aidl")

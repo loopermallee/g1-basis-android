@@ -67,6 +67,7 @@ dependencies {
 
     kapt(libs.hilt.android.compiler)
 
+    implementation(project(":client"))
     implementation(project(":service"))
 
     androidTestImplementation(platform(libs.androidx.compose.bom))

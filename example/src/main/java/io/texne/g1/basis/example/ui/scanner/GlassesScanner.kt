@@ -21,24 +21,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import io.texne.g1.basis.service.protocol.G1Glasses
-import io.texne.g1.basis.service.protocol.G1ServiceState
+import io.texne.g1.basis.client.G1ServiceClient
+import io.texne.g1.basis.client.G1ServiceClient.Glasses
+import io.texne.g1.basis.client.G1ServiceClient.GlassesStatus
+import io.texne.g1.basis.client.G1ServiceClient.ServiceStatus
 
 @Composable
-fun ServiceState(status: Int) {
+fun ServiceState(status: ServiceStatus) {
     Text(
         when(status) {
-            G1ServiceState.LOOKING -> "Scanning..."
-            G1ServiceState.LOOKED -> "Ready"
-            G1ServiceState.READY -> "Ready"
-            G1ServiceState.ERROR -> "Error"
+            ServiceStatus.LOOKING -> "Scanning..."
+            ServiceStatus.LOOKED -> "Ready"
+            ServiceStatus.READY -> "Ready"
+            ServiceStatus.ERROR -> "Error"
             else -> "Not Ready"
         }
     )
 }
 
 @Composable
-fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> Unit) {
+fun GlassesItem(glasses: Glasses, onConnect: () -> Unit, onDisconnect: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -50,11 +52,11 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
             Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
         }
         Spacer(modifier = Modifier.weight(1f))
-        if(glasses.connectionState == G1Glasses.CONNECTING || glasses.connectionState == G1Glasses.DISCONNECTING) {
+        if(glasses.status == GlassesStatus.CONNECTING || glasses.status == GlassesStatus.DISCONNECTING) {
             CircularProgressIndicator(
                 modifier = Modifier.padding(vertical = 4.dp)
             )
-        } else if(glasses.connectionState != G1Glasses.CONNECTED) {
+        } else if(glasses.status != GlassesStatus.CONNECTED) {
             Button(
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Green),
                 onClick = onConnect
@@ -69,8 +71,8 @@ fun GlassesItem(glasses: G1Glasses, onConnect: () -> Unit, onDisconnect: () -> U
 }
 
 @Composable
-fun GlassesList(status: Int, glasses: Array<G1Glasses>, onConnect: (id: String) -> Unit, onDisconnect: (id: String) -> Unit) {
-    if (status == G1ServiceState.LOOKING || (status == G1ServiceState.LOOKED && glasses.isNotEmpty())) {
+fun GlassesList(status: ServiceStatus, glasses: List<Glasses>, onConnect: (id: String) -> Unit, onDisconnect: (id: String) -> Unit) {
+    if (status == ServiceStatus.LOOKING || (status == ServiceStatus.LOOKED && glasses.isNotEmpty())) {
         Column(
             modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -107,7 +109,7 @@ fun GlassesScanner() {
                     modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if(state.status == G1ServiceState.LOOKING) {
+                    if(state.status == ServiceStatus.LOOKING) {
                         CircularProgressIndicator(
                             modifier = Modifier.padding(end = 16.dp)
                         )
@@ -115,7 +117,7 @@ fun GlassesScanner() {
                     ServiceState(state.status)
                     Spacer(Modifier.weight(1f))
                     Button(
-                        enabled = state.status != G1ServiceState.LOOKING,
+                        enabled = state.status != ServiceStatus.LOOKING,
                         onClick = { viewModel.startLooking() }
                     ) {
                         Text("Scan")

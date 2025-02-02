@@ -1,47 +1,68 @@
-package io.texne.g1.basis.service.client
+package io.texne.g1.basis.client
 
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import io.texne.g1.basis.service.protocol.G1Glasses
+import io.texne.g1.basis.service.protocol.G1ServiceState
 import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
-import io.texne.g1.basis.service.protocol.OperationCallback
-import io.texne.g1.basis.service.protocol.G1ServiceState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.Closeable
+import kotlin.collections.any
+import kotlin.collections.forEach
+import kotlin.collections.map
+import kotlin.collections.plus
+import kotlin.collections.toTypedArray
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-
-enum class JustifyLine { LEFT, RIGHT, CENTER }
-enum class JustifyPage { TOP, BOTTOM, CENTER }
-
-data class FormattedLine(
-    val text: String,
-    val justify: JustifyLine
-)
-
-data class FormattedPage(
-    val lines: List<FormattedLine>,
-    val justify: JustifyPage
-)
-
-data class TimedFormattedPage(
-    val page: FormattedPage,
-    val milliseconds: Long
-)
+import kotlin.text.repeat
 
 const val SPACE_FILL_MULTIPLIER = 2
 
-class G1ServiceClient(
+class G1ServiceClient private constructor(
     private val context: Context
 ): Closeable {
 
+    companion object {
+        fun open(context: Context): G1ServiceClient? {
+            val client = G1ServiceClient(context)
+            val intent = Intent()
+            intent.setClassName(context, "io.texne.g1.basis.service.G1Service")
+            if(context.bindService(
+                intent,
+                client.serviceConnection,
+                Context.BIND_AUTO_CREATE
+            )) {
+                return client
+            }
+            return null
+        }
+    }
+
+    enum class GlassesStatus { UNINITIALIZED, DISCONNECTED, CONNECTING, CONNECTED, DISCONNECTING, ERROR }
+
+    data class Glasses(
+        val id: String,
+        val name: String,
+        val status: GlassesStatus,
+        val batteryPercentage: Int
+    )
+
+    enum class ServiceStatus { READY, LOOKING, LOOKED, ERROR }
+
+    data class State(
+        val status: ServiceStatus,
+        val glasses: List<Glasses>
+    )
+
     private var service: IG1Service? = null
-    private val writableState = MutableStateFlow<G1ServiceState?>(null)
+    private val writableState =
+        MutableStateFlow<State?>(null)
 
     val state = writableState.asStateFlow()
 
@@ -54,7 +75,27 @@ class G1ServiceClient(
             service?.observeState(object : ObserveStateCallback.Stub() {
                 override fun onStateChange(newState: G1ServiceState?) {
                     if(newState != null) {
-                        writableState.value = newState
+                        writableState.value = State(
+                            status = when(newState.status) {
+                                G1ServiceState.READY -> ServiceStatus.READY
+                                G1ServiceState.LOOKING -> ServiceStatus.LOOKING
+                                G1ServiceState.LOOKED -> ServiceStatus.LOOKED
+                                else -> ServiceStatus.ERROR
+                            },
+                            glasses = newState.glasses.map { Glasses(
+                                id = it.id,
+                                name = it.name,
+                                status = when(it.connectionState) {
+                                    G1Glasses.UNINITIALIZED -> GlassesStatus.UNINITIALIZED
+                                    G1Glasses.DISCONNECTED -> GlassesStatus.DISCONNECTED
+                                    G1Glasses.CONNECTING -> GlassesStatus.CONNECTING
+                                    G1Glasses.CONNECTED -> GlassesStatus.CONNECTED
+                                    G1Glasses.DISCONNECTING -> GlassesStatus.DISCONNECTING
+                                    else -> GlassesStatus.ERROR
+                                },
+                                batteryPercentage = it.batteryPercentage
+                            ) }
+                        )
                     }
                 }
             })
@@ -67,17 +108,6 @@ class G1ServiceClient(
 
     //
 
-    fun open(): Boolean {
-        Intent().also { intent ->
-            intent.setClassName(context, "io.texne.g1.basis.service.server.G1Service")
-            return context.bindService(
-                intent,
-                serviceConnection,
-                Context.BIND_AUTO_CREATE
-            )
-        }
-    }
-
     override fun close() {
         context.unbindService(serviceConnection)
     }
@@ -89,11 +119,13 @@ class G1ServiceClient(
     }
 
     suspend fun connect(id: String) = suspendCoroutine<Boolean> { continuation ->
-        service?.connectGlasses(id, object: OperationCallback.Stub() {
-            override fun onResult(success: Boolean) {
-                continuation.resume(success)
-            }
-        })
+        service?.connectGlasses(
+            id,
+            object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
+                override fun onResult(success: Boolean) {
+                    continuation.resume(success)
+                }
+            })
     }
 
     fun disconnect(id: String) {
@@ -101,6 +133,29 @@ class G1ServiceClient(
     }
 
     //
+
+    fun listConnectedGlasses(): List<Glasses> =
+        state.value?.glasses?.filter { it.status == GlassesStatus.CONNECTED } ?: listOf()
+
+    //
+
+    enum class JustifyLine { LEFT, RIGHT, CENTER }
+    enum class JustifyPage { TOP, BOTTOM, CENTER }
+
+    data class FormattedLine(
+        val text: String,
+        val justify: JustifyLine
+    )
+
+    data class FormattedPage(
+        val lines: List<FormattedLine>,
+        val justify: JustifyPage
+    )
+
+    data class TimedFormattedPage(
+        val page: FormattedPage,
+        val milliseconds: Long
+    )
 
     suspend fun displayFormattedPageSequence(id: String, sequence: List<TimedFormattedPage>): Boolean {
         sequence.forEach { timedPage ->
@@ -181,19 +236,25 @@ class G1ServiceClient(
         return stopDisplaying(id)
     }
 
-    suspend fun displayTextPage(id: String, page: List<String>) = suspendCoroutine<Boolean> { continuation ->
-        service?.displayTextPage(id, page.toTypedArray(), object: OperationCallback.Stub() {
-            override fun onResult(success: Boolean) {
-                continuation.resume(success)
-            }
-        })
-    }
+    suspend fun displayTextPage(id: String, page: List<String>) =
+        suspendCoroutine<Boolean> { continuation ->
+            service?.displayTextPage(
+                id,
+                page.toTypedArray(),
+                object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
+                    override fun onResult(success: Boolean) {
+                        continuation.resume(success)
+                    }
+                })
+        }
 
     suspend fun stopDisplaying(id: String) = suspendCoroutine<Boolean> { continuation ->
-        service?.stopDisplaying(id, object: OperationCallback.Stub() {
-            override fun onResult(success: Boolean) {
-                continuation.resume(success)
-            }
-        })
+        service?.stopDisplaying(
+            id,
+            object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
+                override fun onResult(success: Boolean) {
+                    continuation.resume(success)
+                }
+            })
     }
 }

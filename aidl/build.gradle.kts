@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "io.texne.g1.basis.service"
+    namespace = "io.texne.g1.basis.aidl"
     compileSdk = 35
 
     defaultConfig {
@@ -13,6 +13,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
     }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -21,6 +22,9 @@ android {
                 "proguard-rules.pro"
             )
         }
+    }
+    buildFeatures {
+        aidl = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -32,11 +36,4 @@ android {
 }
 
 dependencies {
-    implementation(libs.androidx.core)
-    implementation(libs.coroutines.android)
-    implementation(libs.nabinbhandari.permissions)
-    implementation(libs.androidx.datastore)
-
-    implementation(project(":core"))
-    implementation(project(":aidl"))
 }
