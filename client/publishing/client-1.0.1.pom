@@ -7,7 +7,7 @@
   <artifactId>client</artifactId>
   <packaging>aar</packaging>
 
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <name>Basis Client</name>
   <description>
     Client library to the Basis Android service for Even Realities G1 glasses.
@@ -58,6 +58,12 @@
       <groupId>org.jetbrains.kotlinx</groupId>
       <artifactId>kotlinx-coroutines-android</artifactId>
       <version>1.9.0</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.texne.g1.basis</groupId>
+      <artifactId>client-service-bridge</artifactId>
+      <version>1.0.1</version>
       <scope>runtime</scope>
     </dependency>
   </dependencies>

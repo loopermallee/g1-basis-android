@@ -69,9 +69,4 @@ dependencies {
 
     implementation(project(":client"))
     implementation(project(":service"))
-
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.ui.test.junit4)
-    debugImplementation(libs.androidx.ui.tooling)
-    debugImplementation(libs.androidx.ui.test.manifest)
 }

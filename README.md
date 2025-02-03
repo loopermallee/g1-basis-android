@@ -18,7 +18,7 @@ The service also handles requesting the necessary permissions at runtime, so cal
 The latest release is available on [Maven Central](https://central.sonatype.com/artifact/io.texne.g1.basis/service)
 
 ```kotlin
-implementation("io.texne.g1.basis:service:1.0.0")
+implementation("io.texne.g1.basis:service:1.0.1")
 ```
 
 ## AIDL
@@ -34,7 +34,7 @@ The **client** module implements a simple native interface to the shared service
 The latest release is available on [Maven Central](https://central.sonatype.com/artifact/io.texne.g1.basis/client)
 
 ```kotlin
-implementation("io.texne.g1.basis:client:1.0.0")
+implementation("io.texne.g1.basis:client:1.0.1")
 ```
 
 ### 1. Initialization
