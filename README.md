@@ -13,6 +13,14 @@ The **service** module implements a shared Android service that multiple applica
 Applications interface with the service using the AIDL-defined generated code and a simple wrapper that exposes the service using coroutines and flow the way the Core library does.
 The service also handles requesting the necessary permissions at runtime, so calling applications do not have to.
 
+### Releases
+
+The latest release is available on [Maven Central](https://central.sonatype.com/artifact/io.texne.g1.basis/service)
+
+```kotlin
+implementation("io.texne.g1.basis:service:1.0.0")
+```
+
 ## AIDL
 The **aidl** module contains the specification of the RPC protocol between the client and service.  
 It is the glue that makes it possible for multiple apps using the client to share the service (and access to the glasses).
@@ -20,6 +28,14 @@ Both the **client** and **service** module require it, but you would not need to
 
 ## Client
 The **client** module implements a simple native interface to the shared service.
+
+### Releases
+
+The latest release is available on [Maven Central](https://central.sonatype.com/artifact/io.texne.g1.basis/client)
+
+```kotlin
+implementation("io.texne.g1.basis:client:1.0.0")
+```
 
 ### 1. Initialization
 

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.texne.g1.basis</groupId>
+  <artifactId>client</artifactId>
+  <packaging>aar</packaging>
+
+  <version>1.0.0</version>
+  <name>Basis Client</name>
+  <description>
+    Client library to the Basis Android service for Even Realities G1 glasses.
+  </description>
+  <url>https://github.com/rodrigofalvarez/g1-basis-android</url>
+
+  <licenses>
+    <license>
+      <name>BSD 2-Clause License</name>
+      <url>https://github.com/rodrigofalvarez/g1-basis-android/blob/main/LICENSE</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>rodrigofalvarez</id>
+      <name>Rodrigo Alvarez</name>
+      <email>rodrigofalvarez@gmail.com</email>
+      <organization>Texne</organization>
+      <organizationUrl>https://texne.io</organizationUrl>
+      <roles>
+        <role>architect</role>
+        <role>developer</role>
+      </roles>
+      <timezone>-6</timezone>
+
+      <properties>
+        <picUrl>https://avatars.githubusercontent.com/u/7286294</picUrl>
+      </properties>
+    </developer>
+  </developers>
+
+  <scm>
+    <url>https://github.com/rodrigofalvarez/g1-basis-android</url>
+    <connection>scm:svn:git@github.com:rodrigofalvarez/g1-basis-android.git</connection>
+    <developerConnection>scm:svn:git@github.com:rodrigofalvarez/g1-basis-android.git</developerConnection>
+  </scm>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+      <version>1.9.24</version>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlinx</groupId>
+      <artifactId>kotlinx-coroutines-android</artifactId>
+      <version>1.9.0</version>
+      <scope>runtime</scope>
+    </dependency>
+  </dependencies>
+</project>
