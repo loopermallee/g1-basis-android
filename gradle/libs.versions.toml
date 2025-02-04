@@ -9,13 +9,12 @@ nordicScanner = "1.6.0"
 coroutines= "1.9.0"
 core = "1.15.0"
 nabinbhandariPermissions = "4.0.0"
-lifecycleRuntimeKtx = "2.8.7"
-lifecycleViewModelKtx = "2.8.7"
 activityCompose = "1.10.0"
 composeBom = "2025.01.01"
 hilt = "2.51.1"
 androidxHilt = "1.2.0"
 datastore = "1.1.2"
+basisClient = "1.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,8 +26,6 @@ nordic-scanner = { group = "no.nordicsemi.android.support.v18", name = "scanner"
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 androidx-core = { group = "androidx.core", name = "core", version.ref = "core" }
 nabinbhandari-permissions = { group = "com.nabinbhandari.android", name="permissions", version.ref = "nabinbhandariPermissions"}
-androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
-androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewModelKtx" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui" }
@@ -39,6 +36,7 @@ hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref
 hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "androidxHilt" }
 hilt-android-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
 androidx-datastore = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+basis-client = { group = "io.texne.g1.basis", name = "client", version.ref = "basisClient"}
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
