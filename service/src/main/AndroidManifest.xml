@@ -1,9 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:tools="http://schemas.android.com/tools"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <permission android:name="io.texne.g1.basis.permission.CONNECT_TO_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application>
-        <service android:name=".G1Service" android:foregroundServiceType="connectedDevice" android:stopWithTask="false"/>
+        <service
+            android:name=".G1Service"
+            android:foregroundServiceType="connectedDevice"
+            android:permission="io.texne.g1.basis.permission.CONNECT_TO_SERVICE"
+            android:stopWithTask="false"
+            android:exported="true"
+            tools:ignore="ExportedService">
+            <intent-filter>
+                <action android:name="io.texne.g1.basis.service.protocol.IG1Service"/>
+                <action android:name="io.texne.g1.basis.service.protocol.IG1ServiceClient"/>
+            </intent-filter>
+        </service>
     </application>
 </manifest>

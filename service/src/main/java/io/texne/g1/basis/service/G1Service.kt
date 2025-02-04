@@ -25,6 +25,7 @@ import io.texne.g1.basis.service.protocol.ObserveStateCallback
 import io.texne.g1.basis.service.protocol.OperationCallback
 import io.texne.g1.basis.service.protocol.G1ServiceState
 import io.texne.g1.basis.service.protocol.IG1Service
+import io.texne.g1.basis.service.protocol.IG1ServiceClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -99,17 +100,60 @@ class G1Service: Service() {
 
     // client-service interface --------------------------------------------------------------------
 
-    private val binder = object : IG1Service.Stub() {
-
-        override fun observeState(callback: ObserveStateCallback?) {
-            if(callback != null) {
-                coroutineScope.launch {
-                    state.collect {
-                        callback.onStateChange(it.toState())
-                    }
+    private fun commonObserveState(callback: ObserveStateCallback?) {
+        if(callback != null) {
+            coroutineScope.launch {
+                state.collect {
+                    callback.onStateChange(it.toState())
                 }
             }
         }
+    }
+
+    private fun commonDisplayTextPage(
+        id: String?,
+        page: Array<out String?>?,
+        callback: OperationCallback?
+    ) {
+        if(id != null && page != null) {
+            val glasses = state.value.glasses.get(id)
+            if (glasses != null) {
+                coroutineScope.launch {
+                    val result = glasses.g1.displayTextPage(page.filterNotNull())
+                    callback?.onResult(result)
+                }
+            }
+        }
+    }
+
+    private fun commonStopDisplaying(id: String?, callback: OperationCallback?) {
+        if(id != null) {
+            val glasses = state.value.glasses.get(id)
+            if (glasses != null) {
+                coroutineScope.launch {
+                    val result = glasses.g1.stopDisplaying()
+                    callback?.onResult(result)
+                }
+            }
+        }
+    }
+
+    private val clientBinder = object : IG1ServiceClient.Stub() {
+        override fun observeState(callback: ObserveStateCallback?) = commonObserveState(callback)
+        override fun displayTextPage(
+            id: String?,
+            page: Array<out String?>?,
+            callback: OperationCallback?
+        ) = commonDisplayTextPage(id, page, callback)
+        override fun stopDisplaying(
+            id: String?,
+            callback: OperationCallback?
+        ) = commonStopDisplaying(id, callback)
+    }
+
+    private val binder = object : IG1Service.Stub() {
+
+        override fun observeState(callback: ObserveStateCallback?) = commonObserveState(callback)
 
         override fun lookForGlasses() {
             if(state.value.status == ServiceStatus.LOOKING) {
@@ -236,29 +280,10 @@ class G1Service: Service() {
             id: String?,
             page: Array<out String?>?,
             callback: OperationCallback?
-        ) {
-            if(id != null && page != null) {
-                val glasses = state.value.glasses.get(id)
-                if (glasses != null) {
-                    coroutineScope.launch {
-                        val result = glasses.g1.displayTextPage(page.filterNotNull())
-                        callback?.onResult(result)
-                    }
-                }
-            }
-        }
+        ) = commonDisplayTextPage(id, page, callback)
 
-        override fun stopDisplaying(id: String?, callback: OperationCallback?) {
-            if(id != null) {
-                val glasses = state.value.glasses.get(id)
-                if (glasses != null) {
-                    coroutineScope.launch {
-                        val result = glasses.g1.stopDisplaying()
-                        callback?.onResult(result)
-                    }
-                }
-            }
-        }
+        override fun stopDisplaying(id: String?, callback: OperationCallback?) =
+            commonStopDisplaying(id, callback)
     }
 
     // infrastructure ------------------------------------------------------------------------------
@@ -311,7 +336,7 @@ class G1Service: Service() {
                 notificationManager.createNotificationChannel(notificationChannel)
 
                 val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
-                    .setSmallIcon(R.mipmap.ic_service)
+                    .setSmallIcon(R.mipmap.ic_service_foreground)
                     .setContentTitle(getString(R.string.notification_channel_name))
                     .setContentText(getString(R.string.notification_text))
                     .setContentIntent(
@@ -346,7 +371,12 @@ class G1Service: Service() {
         } else {
             applicationContext.startService(Intent(applicationContext, G1Service::class.java))
         }
-        return binder
+
+        return when(intent?.action) {
+            "io.texne.g1.basis.service.protocol.IG1Service" -> binder
+            "io.texne.g1.basis.service.protocol.IG1ServiceClient" -> clientBinder
+            else -> null
+        }
     }
 
     override fun onDestroy() {

@@ -18,13 +18,21 @@ The service also handles requesting the necessary permissions at runtime, so cal
 The latest release is available on [Maven Central](https://central.sonatype.com/artifact/io.texne.g1.basis/service)
 
 ```kotlin
-implementation("io.texne.g1.basis:service:1.0.1")
+implementation("io.texne.g1.basis:service:1.1.0")
 ```
 
 ## AIDL
 The **aidl** module contains the specification of the RPC protocol between the client and service.  
 It is the glue that makes it possible for multiple apps using the client to share the service (and access to the glasses).
 Both the **client** and **service** module require it, but you would not need to include it or use it directly.
+
+## Hub
+
+The **hub** module contains the application for running the G1 service and managing connections to glasses on Android.
+The application can seamlessly and reliably discover, connect and disconnect, and send commands to glasses.
+It must be running on your phone and connected to the glasses for any apps using the client library to talk to them.
+
+*(more details coming soon)*
 
 ## Client
 The **client** module implements a simple native interface to the shared service.
@@ -34,7 +42,7 @@ The **client** module implements a simple native interface to the shared service
 The latest release is available on [Maven Central](https://central.sonatype.com/artifact/io.texne.g1.basis/client)
 
 ```kotlin
-implementation("io.texne.g1.basis:client:1.0.1")
+implementation("io.texne.g1.basis:client:1.1.0")
 ```
 
 ### 1. Initialization
@@ -227,9 +235,9 @@ val success = client.displayCentered(id, textLines, milliseconds)
 displays the list of strings (maximum five strings of 40 characters limit each) centered on the screen for the duration of milliseconds, or permanently if null.
 The default for milliseconds is 2000.
 
-## Example
-The **example** module contains a Compose application that demonstrates use of the service. 
-The application can seamlessly and reliably discover, connect and disconnect, and send commands to glasses.
-Because the application is a standalone example, it includes both the client and service modules.
+## Subtitles
+
+The **subtitles** module contains an example application that uses the client to transcribe everything it hears and send it 
+to the glasses that are connected using the Hub.  It is in progress, it does not yet work.
 
 *(more details coming soon)*
