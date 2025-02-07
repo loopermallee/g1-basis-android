@@ -1,5 +1,6 @@
 package io.texne.g1.subtitles.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,23 +47,41 @@ class SubtitlesViewModel @Inject constructor(
                     Repository.Event.RecognitionError -> {}
                     is Repository.Event.SpeechRecognized -> {
                         val cutLines = textLinesToGlassesLines(it.text)
-                        val linesLeft = mutableListOf<String>()
-                        if(state.value.displayText.isEmpty()) {
-                            if(cutLines.size > 5) {
+                        val linesLeft = if(state.value.displayText.isEmpty()) {
+                            queueJob?.cancel()
+                            queueJob = null
+
+                            val linesToleave = if(cutLines.size > 5) {
                                 val firstLines = cutLines.take(5)
-                                linesLeft.addAll(cutLines.takeLast(cutLines.size - 5))
                                 displayNow(firstLines)
+                                cutLines.takeLast(cutLines.size - 5)
                             } else {
                                 displayNow(cutLines)
-                                queueJob?.cancel()
-                                queueJob = null
+                                listOf()
                             }
+                            linesToleave
+                        } else if(state.value.displayText.size < 5) {
+                            queueJob?.cancel()
+                            queueJob = null
+
+                            val linesToAdd = 5 - state.value.displayText.size
+                            val linesToLeave = if(linesToAdd >= cutLines.size) {
+                                displayNow(state.value.displayText.plus(cutLines))
+                                listOf()
+                            } else {
+                                displayNow(state.value.displayText.plus(cutLines.take(linesToAdd)))
+                                cutLines.takeLast(cutLines.size-linesToAdd)
+                            }
+                            linesToLeave
+                        } else {
+                            cutLines
                         }
+
                         if(linesLeft.isNotEmpty()) {
                             displayQueue.addAll(linesLeft.chunked(5))
                         }
                         if(queueJob == null) {
-                            viewModelScope.launch {
+                            queueJob = viewModelScope.launch {
                                 var somethingDisplayed = false
                                 do {
                                     delay(5000)
@@ -75,7 +94,6 @@ class SubtitlesViewModel @Inject constructor(
                                     }
                                 } while (somethingDisplayed)
                                 displayNow(listOf())
-                                repository.stopDisplaying()
                                 queueJob = null
                             }
                         }
@@ -95,7 +113,11 @@ class SubtitlesViewModel @Inject constructor(
             writableState.value = state.value.copy(
                 displayText = lines
             )
-            repository.displayCentered(lines)
+            if(lines.isNotEmpty()) {
+                repository.displayText(lines)
+            } else {
+                repository.stopDisplaying()
+            }
         }
     }
 

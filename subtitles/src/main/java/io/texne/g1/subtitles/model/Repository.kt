@@ -116,8 +116,11 @@ class Repository @Inject constructor(
     fun unbindService() =
         service.close()
 
-    suspend fun displayCentered(text: List<String>) =
-        service.displayCentered(state.value.glasses!!.id, text, null)
+    suspend fun displayText(text: List<String>) =
+        service.displayFormattedPage(state.value.glasses!!.id, G1ServiceCommon.FormattedPage(
+            lines = text.map { G1ServiceCommon.FormattedLine(text = it, justify = G1ServiceCommon.JustifyLine.LEFT) },
+            justify = G1ServiceCommon.JustifyPage.BOTTOM
+        ))
 
     suspend fun stopDisplaying() =
         service.stopDisplaying(state.value.glasses!!.id)
