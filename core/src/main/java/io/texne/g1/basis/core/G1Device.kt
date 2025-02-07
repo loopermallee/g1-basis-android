@@ -67,17 +67,9 @@ internal class G1Device(
                             // is this the response we're expecting?
                             val request = currentRequest
                             if(request != null && packet.responseTo == request.outgoing.type) {
-                                // service the request, and advance the queue
+                                // service the request, and advance the queue until a command is successfully sent
                                 request.callback.invoke(packet)
-                                val nextRequest = queuedRequests.removeFirstOrNull()
-                                if(nextRequest != null) {
-                                    currentRequest = nextRequest.copy(
-                                        expires = Date().time + REQUEST_EXPIRATION_MILLIS
-                                    )
-                                    manager.send(nextRequest.outgoing)
-                                } else {
-                                    currentRequest = null
-                                }
+                                advanceQueue()
                             } else {
                                 // TODO: emit it as an unrequested packet
                             }
@@ -108,6 +100,25 @@ internal class G1Device(
         manager.disconnect().suspend()
     }
 
+    private fun advanceQueue() {
+        var nextRequest = queuedRequests.removeFirstOrNull()
+        var successfullySent = false
+        while (nextRequest != null && !successfullySent) {
+            currentRequest = nextRequest.copy(
+                expires = Date().time + REQUEST_EXPIRATION_MILLIS
+            )
+            successfullySent = manager.send(nextRequest.outgoing)
+            if(!successfullySent) {
+                // TODO: log send error
+                nextRequest.callback(null)
+                nextRequest = queuedRequests.removeFirstOrNull()
+            }
+        }
+        if(nextRequest == null) {
+            currentRequest = null
+        }
+    }
+
     // request and response mechanism --------------------------------------------------------------
 
     private val REQUEST_EXPIRATION_MILLIS = 5000
@@ -131,7 +142,10 @@ internal class G1Device(
                     callback = { incomingPacket -> continuation.resume(incomingPacket) },
                     expires = Date().time + REQUEST_EXPIRATION_MILLIS
                 )
-                manager.send(outgoing)
+                if(!manager.send(outgoing)) {
+                    currentRequest = null
+                    continuation.resume(null)
+                }
             } else {
                 queuedRequests.add(
                     Request(
@@ -153,19 +167,15 @@ internal class G1Device(
     }
 
     private fun sendBatteryCheck() {
-        manager.send(BatteryLevelRequestPacket())
+        if(!manager.send(BatteryLevelRequestPacket())) {
+            // TODO: log error
+        }
 
         // if current request has expired, return failure and advance queue
         val request = currentRequest
         if(request != null && request.expires < Date().time) {
             request.callback(null)
-            val nextRequest = queuedRequests.removeFirstOrNull()
-            if(nextRequest != null) {
-                currentRequest = nextRequest.copy(
-                    expires = Date().time + REQUEST_EXPIRATION_MILLIS
-                )
-                manager.send(nextRequest.outgoing)
-            }
+            advanceQueue()
         }
     }
 

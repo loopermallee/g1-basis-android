@@ -91,9 +91,28 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
 
     //
 
-    fun send(packet: OutgoingPacket) {
+    fun send(packet: OutgoingPacket): Boolean {
         Log.d("G1BLEManager", "G1_TRAFFIC_SEND ${packet.bytes.map { String.format("%02x", it) }.joinToString(" ")}")
-        writeCharacteristic(writeCharacteristic!!, packet.bytes, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE).await()
+
+        var attemptsRemaining = 3
+        var success: Boolean = false
+        while(!success && attemptsRemaining > 0) {
+            if(--attemptsRemaining != 2) {
+                Log.d("G1BLEManager", "G1_TRAFFIC_SEND retrying, attempt ${3-attemptsRemaining}")
+            }
+            success = try {
+                writeCharacteristic(
+                    writeCharacteristic!!,
+                    packet.bytes,
+                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                ).await()
+                true
+            } catch (e: Exception) {
+                // the request failed
+                false
+            }
+        }
+        return success
     }
 
     //

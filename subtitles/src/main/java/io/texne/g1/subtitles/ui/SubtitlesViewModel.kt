@@ -140,7 +140,7 @@ class SubtitlesViewModel @Inject constructor(
                     }
                 }
                 if(accumulatedLine.isNotBlank()) {
-                    glassesLines.add(line)
+                    glassesLines.add(accumulatedLine)
                 }
             }
         }
