@@ -14,7 +14,9 @@ composeBom = "2025.01.01"
 hilt = "2.51.1"
 androidxHilt = "1.2.0"
 datastore = "1.1.2"
-basisClient = "1.1.0"
+basisClient = "1.1.1"
+basisService = "1.1.0"
+materialIcons = "1.7.7"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -37,6 +39,8 @@ hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-com
 hilt-android-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
 androidx-datastore = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 basis-client = { group = "io.texne.g1.basis", name = "client", version.ref = "basisClient"}
+basis-service = { group = "io.texne.g1.basis", name = "service", version.ref = "basisService"}
+androidx-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIcons"}
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

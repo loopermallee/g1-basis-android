@@ -29,6 +29,12 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
             }
             return null
         }
+
+        fun openHub(context: Context) {
+            context.startActivity(Intent(Intent.ACTION_MAIN).also {
+                it.setClassName("io.texne.g1.hub", "io.texne.g1.hub.MainActivity")
+            })
+        }
     }
 
     override val serviceConnection = object : ServiceConnection {

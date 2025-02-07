@@ -1,5 +1,6 @@
 package io.texne.g1.subtitles
 
+import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,7 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import com.nabinbhandari.android.permissions.PermissionHandler
+import com.nabinbhandari.android.permissions.Permissions
 import dagger.hilt.android.AndroidEntryPoint
+import io.texne.g1.basis.client.G1ServiceClient
 import io.texne.g1.subtitles.model.Repository
 import io.texne.g1.subtitles.ui.SubtitlesScreen
 import io.texne.g1.subtitles.ui.theme.SubtitlesTheme
@@ -25,14 +29,19 @@ class MainActivity: ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         repository.bindService(lifecycleScope)
-        repository.initializeSpeechRecognizer(this)
+
+        withPermissions {
+            repository.initializeSpeechRecognizer(lifecycleScope)
+        }
 
         enableEdgeToEdge()
         setContent {
             SubtitlesTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     Box(Modifier.padding(innerPadding).fillMaxSize()) {
-                        SubtitlesScreen()
+                        SubtitlesScreen {
+                            G1ServiceClient.openHub(this@MainActivity)
+                        }
                     }
                 }
             }
@@ -43,5 +52,18 @@ class MainActivity: ComponentActivity() {
         super.onDestroy()
         repository.destroySpeechRecognizer()
         repository.unbindService()
+    }
+
+    private fun withPermissions(block: () -> Unit) {
+        Permissions.check(this, arrayOf(
+            Manifest.permission.RECORD_AUDIO,
+        ),
+        "Please provide the permissions so the app can recognize speech",
+        Permissions.Options().setCreateNewTask(true),
+        object: PermissionHandler() {
+            override fun onGranted() {
+                block()
+            }
+        })
     }
 }

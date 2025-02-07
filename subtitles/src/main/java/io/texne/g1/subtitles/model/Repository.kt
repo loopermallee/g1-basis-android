@@ -1,16 +1,12 @@
 package io.texne.g1.subtitles.model
 
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
-import android.os.Bundle
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
+import android.content.pm.PackageManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
 import io.texne.g1.basis.client.G1ServiceCommon
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -21,98 +17,88 @@ import javax.inject.Singleton
 
 @Singleton
 class Repository @Inject constructor(
-    @ApplicationContext private val applicationContext: Context
+    @ApplicationContext private val applicationContext: Context,
+    private val recognizer: Recognizer
 ) {
-    enum class RecognizerStatus { INITIALIZING, READY, LISTENING, INTERPRETING }
-
     data class State(
+        val hubInstalled: Boolean = true,
         val glasses: G1ServiceCommon.Glasses? = null,
-        val status: RecognizerStatus = RecognizerStatus.INITIALIZING,
-        val justHeard: List<String> = listOf(),
+        val started: Boolean = false,
+        val listening: Boolean = false
     )
 
-    sealed interface Event
-    object RecognitionError: Event
+    sealed interface Event {
+        object RecognitionError : Event
+        data class SpeechRecognized(val text: List<String>) : Event
+    }
 
     private val writableState = MutableStateFlow<State>(State())
     val state = writableState.asStateFlow()
     private val writableEvents = MutableSharedFlow<Event>()
     val events = writableEvents.asSharedFlow()
 
+    init {
+        writableState.value = State(
+            hubInstalled = try {
+                applicationContext.packageManager.getPackageInfo("io.texne.g1.hub", 0)
+                true
+            } catch (e: PackageManager.NameNotFoundException) {
+                false
+            }
+        )
+    }
+
+    //
+
+    private lateinit var viewModelScope: CoroutineScope
+    private var recognizerStateJob: Job? = null
+    private var recognizerEventJob: Job? = null
+
     //
 
     private lateinit var service: G1ServiceClient
-    private lateinit var speechRecognizer: SpeechRecognizer
-    private lateinit var speechRecognizerIntent: Intent
 
-    fun initializeSpeechRecognizer(activity: Activity) {
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(activity)
-        speechRecognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        speechRecognizerIntent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE,
-            activity.packageName
-        )
-        speechRecognizer.setRecognitionListener(object: RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) {
+    fun initializeSpeechRecognizer(coroutineScope: CoroutineScope) {
+        recognizer.create(coroutineScope)
+        recognizerEventJob = coroutineScope.launch {
+            recognizer.events.collect {
+                writableEvents.emit(when {
+                    it == Recognizer.Event.Error -> Event.RecognitionError
+                    it is Recognizer.Event.Heard -> Event.SpeechRecognized(it.text)
+                    else -> Event.RecognitionError
+                })
+            }
+        }
+        recognizerStateJob = coroutineScope.launch {
+            recognizer.state.collect {
                 writableState.value = state.value.copy(
-                    status = RecognizerStatus.READY
+                    started = it.started,
+                    listening = it.listening
                 )
             }
-
-            override fun onBeginningOfSpeech() {
-                writableState.value = state.value.copy(
-                    status = RecognizerStatus.LISTENING
-                )
-            }
-
-            override fun onRmsChanged(rmsdB: Float) {
-                // empty
-            }
-
-            override fun onBufferReceived(buffer: ByteArray?) {
-                // empty
-            }
-
-            override fun onEndOfSpeech() {
-                writableState.value = state.value.copy(
-                    status = RecognizerStatus.INTERPRETING
-                )
-            }
-
-            override fun onError(error: Int) {
-                writableEvents.tryEmit(RecognitionError)
-            }
-
-            override fun onResults(results: Bundle?) {
-                val justHeard = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.toList()
-                if(justHeard != null) {
-                    writableState.value = state.value.copy(
-                        justHeard = justHeard
-                    )
-                }
-            }
-
-            override fun onPartialResults(partialResults: Bundle?) {
-                // empty
-            }
-
-            override fun onEvent(eventType: Int, params: Bundle?) {
-                // empty
-            }
-        })
+        }
     }
 
     fun destroySpeechRecognizer() {
-        speechRecognizer.destroy()
+        recognizerStateJob?.cancel()
+        recognizerStateJob = null
+        recognizerEventJob?.cancel()
+        recognizerEventJob = null
+        recognizer.destroy()
     }
 
-    fun startRecognition() {
-        speechRecognizer.startListening(speechRecognizerIntent)
+    fun startRecognition(coroutineScope: CoroutineScope) {
+        viewModelScope = coroutineScope
+        viewModelScope.launch {
+            recognizer.start()
+        }
     }
 
     fun stopRecognition() {
-        speechRecognizer.stopListening()
+        viewModelScope.launch {
+            stopDisplaying()
+        }
+        recognizer.stop()
     }
 
     fun bindService(coroutineScope: CoroutineScope): Boolean {

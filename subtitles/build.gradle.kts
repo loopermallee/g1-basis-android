@@ -57,6 +57,8 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.material3)
     implementation(libs.basis.client)
+    implementation(libs.nabinbhandari.permissions)
+    implementation(libs.androidx.icons.extended)
 
     kapt(libs.hilt.android.compiler)
 }
