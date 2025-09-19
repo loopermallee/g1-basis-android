@@ -1,56 +1,53 @@
 package io.texne.g1.hub.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+private val G1DarkColorScheme = darkColorScheme(
+    primary = G1Primary,
+    onPrimary = G1OnPrimary,
+    primaryContainer = G1PrimaryContainer,
+    onPrimaryContainer = G1OnPrimaryContainer,
+    inversePrimary = G1InversePrimary,
+    secondary = G1Secondary,
+    onSecondary = G1OnSecondary,
+    secondaryContainer = G1SecondaryContainer,
+    onSecondaryContainer = G1OnSecondaryContainer,
+    tertiary = G1Tertiary,
+    onTertiary = G1OnTertiary,
+    tertiaryContainer = G1TertiaryContainer,
+    onTertiaryContainer = G1OnTertiaryContainer,
+    background = G1Background,
+    onBackground = G1OnBackground,
+    surface = G1Surface,
+    onSurface = G1OnSurface,
+    surfaceVariant = G1SurfaceVariant,
+    onSurfaceVariant = G1OnSurfaceVariant,
+    surfaceBright = G1SurfaceBright,
+    surfaceDim = G1SurfaceDim,
+    surfaceContainerLowest = G1SurfaceContainerLowest,
+    surfaceContainerLow = G1SurfaceContainerLow,
+    surfaceContainer = G1SurfaceContainer,
+    surfaceContainerHigh = G1SurfaceContainerHigh,
+    surfaceContainerHighest = G1SurfaceContainerHighest,
+    inverseSurface = G1InverseSurface,
+    inverseOnSurface = G1InverseOnSurface,
+    outline = G1Outline,
+    outlineVariant = G1OutlineVariant,
+    scrim = G1Scrim,
+    error = G1Error,
+    onError = G1OnError,
+    errorContainer = G1ErrorContainer,
+    onErrorContainer = G1OnErrorContainer,
 )
 
 @Composable
 fun G1HubTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = G1DarkColorScheme,
         typography = Typography,
         content = content
     )

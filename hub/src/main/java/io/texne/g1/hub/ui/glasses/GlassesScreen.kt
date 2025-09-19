@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,7 +35,10 @@ fun GlassesScreen(
     ) {
         Box(
             Modifier.fillMaxSize()
-                .background(Color.White, RoundedCornerShape(16.dp))
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    RoundedCornerShape(16.dp)
+                )
         ) {
             Column(
                 Modifier
@@ -60,8 +63,8 @@ fun GlassesScreen(
                     ) {
                         Button(
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(169, 11, 11, 255),
-                                contentColor = Color.White
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
                             ),
                             onClick = { disconnect() }
                         ) {
@@ -79,10 +82,14 @@ fun GlassesScreen(
                         Text(
                             text = glasses.name,
                             fontSize = 24.sp,
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Black
                         )
-                        Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
+                        Text(
+                            glasses.id,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

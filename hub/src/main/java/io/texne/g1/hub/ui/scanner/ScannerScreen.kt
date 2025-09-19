@@ -16,13 +16,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -112,7 +112,10 @@ fun GlassesItem(
     ) {
         Box(
             Modifier.fillMaxWidth()
-                .background(Color.White, RoundedCornerShape(16.dp))
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    RoundedCornerShape(16.dp)
+                )
         ) {
             Column(
                 Modifier
@@ -138,15 +141,15 @@ fun GlassesItem(
                         when {
                             glasses.status == G1ServiceCommon.GlassesStatus.CONNECTING || glasses.status == G1ServiceCommon.GlassesStatus.DISCONNECTING -> {
                                 CircularProgressIndicator(
-                                    color = Color.Black
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
 
                             glasses.status != G1ServiceCommon.GlassesStatus.CONNECTED -> {
                                 Button(
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(6, 64, 43, 255),
-                                        contentColor = Color.White
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
                                     ),
                                     onClick = { connect() }
                                 ) {
@@ -169,10 +172,14 @@ fun GlassesItem(
                         Text(
                             text = glasses.name,
                             fontSize = 24.sp,
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.Black
                         )
-                        Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
+                        Text(
+                            glasses.id,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
