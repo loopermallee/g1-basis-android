@@ -1,0 +1,47 @@
+name: Android CI (Debug APK Build)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ✅ Checkout repo
+      - uses: actions/checkout@v4
+
+      # ✅ Set up Java (required by Gradle & Android)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # ✅ Install Android SDK
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      # ✅ Generate local.properties pointing to the SDK
+      - name: Configure local.properties
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      # ✅ Build debug APK
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      # ✅ List outputs (for debugging)
+      - name: List APK outputs
+        run: ls -R app/build/outputs/ || echo "⚠️ No APK outputs found"
+
+      # ✅ Upload APK artifact
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
