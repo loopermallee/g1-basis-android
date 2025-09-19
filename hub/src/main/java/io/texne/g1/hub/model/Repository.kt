@@ -48,32 +48,42 @@ class Repository @Inject constructor(
             return false
         }
         val connected = service.listConnectedGlasses().firstOrNull() ?: return false
-        if (pages.isEmpty()) {
+        val sanitizedPages = sanitizePages(pages)
+        if (sanitizedPages.isEmpty()) {
             return false
         }
 
-        val sanitizedPages = pages.map { it.take(MAX_LINES_PER_PAGE) }
-
-        return if (sanitizedPages.size == 1) {
-            service.displayCentered(connected.id, sanitizedPages.first(), holdMillis)
-        } else {
-            val duration = holdMillis ?: DEFAULT_PAGE_HOLD_MILLIS
-            val sequence = sanitizedPages.map { lines ->
-                G1ServiceCommon.TimedFormattedPage(
-                    page = G1ServiceCommon.FormattedPage(
-                        justify = G1ServiceCommon.JustifyPage.CENTER,
-                        lines = lines.map { line ->
-                            G1ServiceCommon.FormattedLine(
-                                text = line,
-                                justify = G1ServiceCommon.JustifyLine.CENTER
-                            )
-                        }
-                    ),
-                    milliseconds = duration
-                )
+        return when {
+            sanitizedPages.size == 1 ->
+                service.displayCentered(connected.id, sanitizedPages.first(), holdMillis)
+            holdMillis == null ->
+                displayCenteredPage(connected.id, sanitizedPages, 0)
+            else -> {
+                val duration = holdMillis ?: DEFAULT_PAGE_HOLD_MILLIS
+                val sequence = sanitizedPages.map { lines ->
+                    G1ServiceCommon.TimedFormattedPage(
+                        page = buildCenteredFormattedPage(lines),
+                        milliseconds = duration
+                    )
+                }
+                service.displayFormattedPageSequence(connected.id, sequence)
             }
-            service.displayFormattedPageSequence(connected.id, sequence)
         }
+    }
+
+    suspend fun displayCenteredPageOnConnectedGlasses(
+        pages: List<List<String>>,
+        pageIndex: Int
+    ): Boolean {
+        if(!::service.isInitialized) {
+            return false
+        }
+        val connected = service.listConnectedGlasses().firstOrNull() ?: return false
+        val sanitizedPages = sanitizePages(pages)
+        if (sanitizedPages.isEmpty() || pageIndex !in sanitizedPages.indices) {
+            return false
+        }
+        return displayCenteredPage(connected.id, sanitizedPages, pageIndex)
     }
 
     suspend fun stopDisplayingOnConnectedGlasses(): Boolean {
@@ -84,10 +94,37 @@ class Repository @Inject constructor(
         return service.stopDisplaying(connected.id)
     }
 
+    internal fun setServiceManagerForTest(serviceManager: G1ServiceManager) {
+        service = serviceManager
+    }
+
     private lateinit var service: G1ServiceManager
 
     private companion object {
         private const val DEFAULT_PAGE_HOLD_MILLIS = 4_000L
         private const val MAX_LINES_PER_PAGE = 4
     }
+
+    private fun sanitizePages(pages: List<List<String>>): List<List<String>> =
+        pages.map { it.take(MAX_LINES_PER_PAGE) }.filter { it.isNotEmpty() }
+
+    private suspend fun displayCenteredPage(
+        glassesId: String,
+        pages: List<List<String>>,
+        pageIndex: Int
+    ): Boolean {
+        val pageLines = pages[pageIndex]
+        return service.displayFormattedPage(glassesId, buildCenteredFormattedPage(pageLines))
+    }
+
+    private fun buildCenteredFormattedPage(lines: List<String>): G1ServiceCommon.FormattedPage =
+        G1ServiceCommon.FormattedPage(
+            justify = G1ServiceCommon.JustifyPage.CENTER,
+            lines = lines.map { line ->
+                G1ServiceCommon.FormattedLine(
+                    text = line,
+                    justify = G1ServiceCommon.JustifyLine.CENTER
+                )
+            }
+        )
 }

@@ -69,4 +69,8 @@ dependencies {
     implementation(libs.okhttp.logging)
 
     kapt(libs.hilt.android.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
 }
