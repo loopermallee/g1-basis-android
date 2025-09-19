@@ -1,6 +1,14 @@
 # G1 Basis
 Open, multipurpose infrastructure for writing Android applications that talk to the [Even Realities G1](https://www.evenrealities.com/g1) glasses.
 
+## Roadmap
+
+- ✅ **Phase 1 – Core connectivity foundations.** Completed with the Core library and shared Service providing stable connections to the glasses, as documented below.
+- ✅ **Phase 2 – Hub experience & Assistant mode.** Completed; the Hub's Assistant tab streams trimmed ChatGPT responses directly to connected glasses (see [Assistant mode](#assistant-mode)).
+- 🚧 **Phase 3 – Live subtitles companion app.** In progress; the Subtitles sample exists but is still being built out before it reliably transcribes to the glasses (see [Subtitles](#subtitles)).
+- ⏳ **Phase 4 – Expanded multi-app experiences.** Not started; upcoming work will focus on additional companion apps and cross-glasses workflows.
+- ⏳ **Phase 5 – Community ecosystem polish.** Not started; future goals include documentation, tooling, and broader release readiness efforts.
+
 ## Core
 The **core** module contains the source code to the core library. 
 This library allows for interfacing directly with the glasses through a simple abstraction that uses modern Android and Kotlin features like coroutines and Flow. 
