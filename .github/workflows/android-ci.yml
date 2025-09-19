@@ -36,12 +36,12 @@ jobs:
 
       # ✅ List outputs (for debugging)
       - name: List APK outputs
-        run: ls -R app/build/outputs/ || echo "⚠️ No APK outputs found"
+        run: ls -R hub/build/outputs/ || echo "⚠️ No APK outputs found"
 
       # ✅ Upload APK artifact
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: hub-debug-apk
+          path: hub/build/outputs/apk/debug/*.apk
           retention-days: 30
