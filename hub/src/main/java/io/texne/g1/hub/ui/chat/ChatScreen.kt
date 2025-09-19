@@ -250,15 +250,11 @@ private fun PersonaSelector(
                         )
                     }
                 } else null,
-                colors = if (selectedPersona) {
-                    FilterChipDefaults.filterChipColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        leadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                } else {
-                    FilterChipDefaults.filterChipColors()
-                }
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             )
         }
     }

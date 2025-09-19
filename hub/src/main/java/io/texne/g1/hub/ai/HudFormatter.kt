@@ -1,6 +1,8 @@
 package io.texne.g1.hub.ai
 
 object HudFormatter {
+    private val whitespaceRegex = Regex("""\s+""")
+
     data class Result(
         val lines: List<String>,
         val truncated: Boolean
@@ -8,8 +10,8 @@ object HudFormatter {
 
     fun format(text: String, maxLines: Int = 5, maxCharsPerLine: Int = 40): Result {
         val normalized = text
-            .replace("\n", " ")
-            .replace("\s+".toRegex(), " ")
+            .replace('\n', ' ')
+            .replace(whitespaceRegex, " ")
             .trim()
 
         if (normalized.isEmpty()) {

@@ -97,8 +97,8 @@ fun SettingsScreen(
         }
         Text(keySummary, style = MaterialTheme.typography.bodySmall)
 
-        if (state.message != null) {
-            StatusMessage(message = state.message, onDismiss = viewModel::consumeMessage)
+        state.message?.let { message ->
+            StatusMessage(message = message, onDismiss = viewModel::consumeMessage)
         }
 
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
