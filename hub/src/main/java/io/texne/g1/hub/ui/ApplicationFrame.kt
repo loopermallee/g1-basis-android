@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.hub.ui.chat.ChatScreen
 import io.texne.g1.hub.ui.settings.SettingsScreen
+import io.texne.g1.hub.ui.todo.TodoScreen
 
 @Composable
 fun ApplicationFrame() {
@@ -75,6 +76,9 @@ fun ApplicationFrame() {
             }
             AppSection.SETTINGS -> {
                 SettingsScreen()
+            }
+            AppSection.TODO -> {
+                TodoScreen()
             }
         }
     }
@@ -131,5 +135,6 @@ fun Header(
 enum class AppSection(val label: String) {
     GLASSES("Glasses"),
     ASSISTANT("Assistant"),
-    SETTINGS("Settings")
+    SETTINGS("Settings"),
+    TODO("Todo")
 }
