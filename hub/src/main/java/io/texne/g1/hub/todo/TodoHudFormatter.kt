@@ -10,8 +10,8 @@ object TodoHudFormatter {
     const val LINES_PER_PAGE = 4
     private const val SPEC_MAX_CHARACTERS_PER_LINE = 50
     private const val HUD_CHARACTER_LIMIT = 40
-    private const val MAX_CHARACTERS_PER_LINE =
-        if (SPEC_MAX_CHARACTERS_PER_LINE < HUD_CHARACTER_LIMIT) SPEC_MAX_CHARACTERS_PER_LINE else HUD_CHARACTER_LIMIT
+    private val MAX_CHARACTERS_PER_LINE =
+        minOf(SPEC_MAX_CHARACTERS_PER_LINE, HUD_CHARACTER_LIMIT)
     private const val ELLIPSIS = "..."
     private const val DETAIL_INDENT = "   "
     private val whitespaceRegex = Regex("""\s+""")
