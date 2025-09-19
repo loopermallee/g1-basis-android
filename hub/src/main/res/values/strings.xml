@@ -1,3 +1,10 @@
 <resources>
     <string name="app_name">G1 Hub</string>
+    <string name="settings_assistant_activation_title">Assistant activation</string>
+    <string name="settings_assistant_activation_description">Choose how to open the assistant from your glasses.</string>
+    <string name="settings_assistant_activation_option_off">Off</string>
+    <string name="settings_assistant_activation_option_single">Single tap</string>
+    <string name="settings_assistant_activation_option_double">Double tap</string>
+    <string name="settings_assistant_activation_option_triple">Triple tap</string>
+    <string name="settings_assistant_activation_option_hold">Tap and hold</string>
 </resources>

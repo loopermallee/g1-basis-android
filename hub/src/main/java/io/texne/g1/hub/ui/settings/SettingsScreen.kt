@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -18,6 +19,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,9 +32,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.texne.g1.hub.assistant.AssistantActivationGesture
+import io.texne.g1.hub.R
 
 @Composable
 fun SettingsScreen(
@@ -101,6 +107,11 @@ fun SettingsScreen(
             StatusMessage(message = message, onDismiss = viewModel::consumeMessage)
         }
 
+        AssistantActivationCard(
+            selectedGesture = state.activationGesture,
+            onGestureSelected = viewModel::setActivationGesture
+        )
+
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -120,6 +131,68 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun AssistantActivationCard(
+    selectedGesture: AssistantActivationGesture,
+    onGestureSelected: (AssistantActivationGesture) -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(id = R.string.settings_assistant_activation_title),
+                style = MaterialTheme.typography.titleSmall
+            )
+            Text(
+                text = stringResource(id = R.string.settings_assistant_activation_description),
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AssistantActivationGesture.entries.forEach { gesture ->
+                    AssistantActivationOption(
+                        gesture = gesture,
+                        selected = gesture == selectedGesture,
+                        onSelected = onGestureSelected
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantActivationOption(
+    gesture: AssistantActivationGesture,
+    selected: Boolean,
+    onSelected: (AssistantActivationGesture) -> Unit
+) {
+    val label = stringResource(id = gesture.labelRes)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = { onSelected(gesture) },
+                role = Role.RadioButton
+            )
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = null
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
