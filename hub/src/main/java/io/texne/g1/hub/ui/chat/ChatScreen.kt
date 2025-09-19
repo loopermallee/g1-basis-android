@@ -7,16 +7,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -44,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.hub.ai.ChatPersona
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.texne.g1.hub.todo.TodoHudFormatter
+import io.texne.g1.hub.todo.TodoHudFormatter.DisplayMode
+import io.texne.g1.hub.ui.todo.TodoViewModel
 import kotlinx.coroutines.delay
 
 @Composable
@@ -51,30 +59,52 @@ fun ChatScreen(
     connectedGlassesName: String?,
     onNavigateToSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: ChatViewModel = hiltViewModel()
+    viewModel: ChatViewModel = hiltViewModel(),
+    todoViewModel: TodoViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val todoState by todoViewModel.state.collectAsStateWithLifecycle()
 
     ChatContent(
         state = state,
+        todoState = todoState,
         connectedGlassesName = connectedGlassesName,
         onPersonaSelected = viewModel::onPersonaSelected,
         onSendPrompt = viewModel::sendPrompt,
         onNavigateToSettings = onNavigateToSettings,
         onDismissError = viewModel::clearError,
-        onHudStatusConsumed = viewModel::clearHudStatus
+        onHudStatusConsumed = viewModel::clearHudStatus,
+        onToggleTask = todoViewModel::toggleTask,
+        onMoveTaskUp = todoViewModel::moveTaskUp,
+        onMoveTaskDown = todoViewModel::moveTaskDown,
+        onDisplayModeSelected = todoViewModel::setDisplayMode,
+        onExpandTask = todoViewModel::expandTask,
+        onCollapseExpanded = todoViewModel::collapseExpanded,
+        onNextTodoPage = todoViewModel::goToNextPage,
+        onPreviousTodoPage = todoViewModel::goToPreviousPage,
+        onClearTodoHudError = todoViewModel::clearHudError
     )
 }
 
 @Composable
 private fun ChatContent(
     state: ChatViewModel.State,
+    todoState: TodoViewModel.State,
     connectedGlassesName: String?,
     onPersonaSelected: (ChatPersona) -> Unit,
     onSendPrompt: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
     onDismissError: () -> Unit,
     onHudStatusConsumed: () -> Unit,
+    onToggleTask: (String) -> Unit,
+    onMoveTaskUp: (String) -> Unit,
+    onMoveTaskDown: (String) -> Unit,
+    onDisplayModeSelected: (DisplayMode) -> Unit,
+    onExpandTask: (Int) -> Unit,
+    onCollapseExpanded: () -> Unit,
+    onNextTodoPage: () -> Unit,
+    onPreviousTodoPage: () -> Unit,
+    onClearTodoHudError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var prompt by rememberSaveable { mutableStateOf("") }
@@ -115,6 +145,19 @@ private fun ChatContent(
             personas = state.availablePersonas,
             selected = state.selectedPersona,
             onPersonaSelected = onPersonaSelected
+        )
+
+        TodoHudPanel(
+            state = todoState,
+            onToggleTask = onToggleTask,
+            onMoveTaskUp = onMoveTaskUp,
+            onMoveTaskDown = onMoveTaskDown,
+            onDisplayModeSelected = onDisplayModeSelected,
+            onExpandTask = onExpandTask,
+            onCollapseExpanded = onCollapseExpanded,
+            onNextPage = onNextTodoPage,
+            onPreviousPage = onPreviousTodoPage,
+            onClearHudError = onClearTodoHudError
         )
 
         if (state.errorMessage != null) {
@@ -215,6 +258,202 @@ private fun ChatContent(
                 enabled = sendEnabled
             ) {
                 Icon(imageVector = Icons.Default.Send, contentDescription = "Send prompt")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoHudPanel(
+    state: TodoViewModel.State,
+    onToggleTask: (String) -> Unit,
+    onMoveTaskUp: (String) -> Unit,
+    onMoveTaskDown: (String) -> Unit,
+    onDisplayModeSelected: (DisplayMode) -> Unit,
+    onExpandTask: (Int) -> Unit,
+    onCollapseExpanded: () -> Unit,
+    onNextPage: () -> Unit,
+    onPreviousPage: () -> Unit,
+    onClearHudError: () -> Unit
+) {
+    val undoIndexMap = state.tasks
+        .filter { !it.isDone }
+        .mapIndexed { index, item -> item.id to index }
+        .toMap()
+    val lastUndoneIndex = undoIndexMap.values.maxOrNull() ?: -1
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Todo HUD",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DisplayModeChip(
+                        label = "Summary",
+                        selected = state.displayMode == DisplayMode.SUMMARY,
+                        onClick = { onDisplayModeSelected(DisplayMode.SUMMARY) }
+                    )
+                    DisplayModeChip(
+                        label = "Full text",
+                        selected = state.displayMode == DisplayMode.FULL,
+                        onClick = { onDisplayModeSelected(DisplayMode.FULL) }
+                    )
+                }
+            }
+
+            if (state.hudError) {
+                TextButton(onClick = onClearHudError) {
+                    Text("Unable to update HUD. Tap to dismiss.")
+                }
+            }
+
+            if (state.tasks.isEmpty()) {
+                Text(
+                    text = "No active tasks.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                val displayTasks = state.tasks
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    itemsIndexed(displayTasks, key = { _, item -> item.id }) { index, task ->
+                        val undoneIndex = undoIndexMap[task.id]
+                        TodoTaskRow(
+                            index = index,
+                            task = task,
+                            displayMode = state.displayMode,
+                            expanded = state.expandedTaskId == task.id,
+                            canMoveUp = undoneIndex != null && undoneIndex > 0,
+                            canMoveDown = undoneIndex != null && undoneIndex < lastUndoneIndex,
+                            onToggleTask = onToggleTask,
+                            onMoveTaskUp = onMoveTaskUp,
+                            onMoveTaskDown = onMoveTaskDown,
+                            onExpandTask = onExpandTask,
+                            onCollapseExpanded = onCollapseExpanded
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "HUD Page ${state.pageIndex + 1} / ${state.pageCount}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = onPreviousPage, enabled = state.pageIndex > 0) {
+                        Text("Prev")
+                    }
+                    TextButton(onClick = onNextPage, enabled = state.pageIndex + 1 < state.pageCount) {
+                        Text("Next")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DisplayModeChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+    )
+}
+
+@Composable
+private fun TodoTaskRow(
+    index: Int,
+    task: io.texne.g1.hub.todo.TodoItem,
+    displayMode: DisplayMode,
+    expanded: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onToggleTask: (String) -> Unit,
+    onMoveTaskUp: (String) -> Unit,
+    onMoveTaskDown: (String) -> Unit,
+    onExpandTask: (Int) -> Unit,
+    onCollapseExpanded: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggleTask(task.id) },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val icon = if (task.isDone) TodoHudFormatter.HUD_CHECKED_ICON else TodoHudFormatter.HUD_UNCHECKED_ICON
+        val preview = when (displayMode) {
+            DisplayMode.SUMMARY -> task.shortText
+            DisplayMode.FULL -> task.fullText
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "${index + 1}. $icon $preview",
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (expanded) {
+                Text(
+                    text = task.fullText,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        IconButton(onClick = { onToggleTask(task.id) }) {
+            Icon(Icons.Filled.Check, contentDescription = "Toggle completion")
+        }
+        if (!task.isDone) {
+            IconButton(onClick = { onMoveTaskUp(task.id) }, enabled = canMoveUp) {
+                Icon(Icons.Filled.ArrowUpward, contentDescription = "Move up")
+            }
+            IconButton(onClick = { onMoveTaskDown(task.id) }, enabled = canMoveDown) {
+                Icon(Icons.Filled.ArrowDownward, contentDescription = "Move down")
+            }
+        }
+        if (expanded) {
+            TextButton(onClick = onCollapseExpanded) {
+                Text("Collapse")
+            }
+        } else {
+            TextButton(onClick = { onExpandTask(index + 1) }) {
+                Text("Expand")
             }
         }
     }

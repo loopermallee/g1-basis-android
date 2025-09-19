@@ -178,7 +178,7 @@ class TodoRepository @Inject constructor(
     }
 
     private fun publishLocked() {
-        activeState.value = activeBacking.filter { !it.isDone && it.archivedAt == null }
+        activeState.value = activeBacking.filter { it.archivedAt == null }
         archivedState.value = archivedBacking
     }
 
