@@ -3,11 +3,11 @@ Open, multipurpose infrastructure for writing Android applications that talk to 
 
 ## Roadmap
 
-- ✅ **Phase 1 – Core connectivity foundations.** Completed with the Core library and shared Service providing stable connections to the glasses, as documented below.
-- ✅ **Phase 2 – Hub experience & Assistant mode.** Completed; the Hub's Assistant tab streams trimmed ChatGPT responses directly to connected glasses (see [Assistant mode](#assistant-mode)).
-- 🚧 **Phase 3 – Live subtitles companion app.** In progress; the Subtitles sample exists but is still being built out before it reliably transcribes to the glasses (see [Subtitles](#subtitles)).
-- ⏳ **Phase 4 – Expanded multi-app experiences.** Not started; upcoming work will focus on additional companion apps and cross-glasses workflows.
-- ⏳ **Phase 5 – Community ecosystem polish.** Not started; future goals include documentation, tooling, and broader release readiness efforts.
+- ✅ **Phase 1 – Core connectivity foundations (100%).** Completed with the Core library and shared Service providing stable connections to the glasses, as documented below.
+- ✅ **Phase 2 – Hub experience & Assistant mode (100%).** Completed; the Hub's Assistant tab streams trimmed ChatGPT responses directly to connected glasses (see [Assistant mode](#assistant-mode)).
+- 🚧 **Phase 3 – Live subtitles companion app (~75%).** In progress; the shipped Subtitles pipeline captures on-device speech recognition, trims transcripts, and streams them through the current speech-recognition and HUD streaming loop while remaining polish lands (see [Subtitles](#subtitles)).
+- ⏳ **Phase 4 – Expanded multi-app experiences (~30%).** Underway; the new Todo HUD adds encrypted task workflows, but broader multi-app orchestration and integrations remain (see [Hub](#hub)).
+- ⏳ **Phase 5 – Community ecosystem polish (0%).** Not started; future goals include documentation, tooling, and broader release readiness efforts.
 
 ## Core
 The **core** module contains the source code to the core library. 
@@ -46,8 +46,13 @@ The Hub application now ships with an **Assistant** tab that talks directly to C
 Bring your own OpenAI API key from the **Settings** tab and the app will store it in encrypted SharedPreferences.
 Responses are auto-paginated into four-line, 32-character pages before being streamed to the connected glasses so the monochrome HUD stays glanceable.
 Two starter personalities (Ershin and Fou-Lu) are available to quickly change tone and verbosity.
+Responses now support interactive pagination controls so you can revisit pages from the glasses as needed.
 
 *(more details coming soon)*
+
+### Todo HUD
+
+The **Todo HUD** tab introduces a secure, glanceable task list for the glasses. Tasks are stored in encrypted SharedPreferences, and streamed with the same four-line pagination used elsewhere while offering an expanded-detail mode when you want additional context. Manual HUD navigation lets you page forward or backward through tasks without touching the phone, and AI command handling turns voice- or chat-based requests into add, complete, and reorder actions on the fly.
 
 ## Client
 The **client** module implements a simple native interface to the shared service.
