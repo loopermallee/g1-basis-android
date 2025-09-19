@@ -130,10 +130,19 @@ private fun ChatContent(
                 )
             }
             is ChatViewModel.HudStatus.Displayed -> {
-                val message = if (hudStatus.truncated) {
-                    "Response shown on the HUD (trimmed to fit)."
-                } else {
-                    "Response sent to the HUD."
+                val message = when {
+                    hudStatus.pageCount > 1 && hudStatus.truncated ->
+                        "Response paginated across ${hudStatus.pageCount} HUD pages (trimmed to fit width)."
+                    hudStatus.pageCount > 1 ->
+                        if (hudStatus.pageCount == 2) {
+                            "Response paginated across 2 HUD pages."
+                        } else {
+                            "Response paginated across ${hudStatus.pageCount} HUD pages."
+                        }
+                    hudStatus.truncated ->
+                        "Response shown on the HUD (trimmed to fit)."
+                    else ->
+                        "Response sent to the HUD."
                 }
                 HudStatusCard(text = message, onDismiss = onHudStatusConsumed)
             }
