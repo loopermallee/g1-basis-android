@@ -1,0 +1,176 @@
+package io.texne.g1.hub.ui.chat
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import io.texne.g1.hub.ai.ChatGptRepository
+import io.texne.g1.hub.ai.ChatGptRepository.ChatMessageData
+import io.texne.g1.hub.ai.ChatPersona
+import io.texne.g1.hub.ai.ChatPersonas
+import io.texne.g1.hub.ai.HudFormatter
+import io.texne.g1.hub.model.Repository
+import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlin.collections.ArrayDeque
+
+@HiltViewModel
+class ChatViewModel @Inject constructor(
+    private val chatRepository: ChatGptRepository,
+    private val serviceRepository: Repository
+) : ViewModel() {
+
+    data class UiMessage(
+        val id: Long,
+        val role: Role,
+        val text: String
+    ) {
+        enum class Role { USER, ASSISTANT }
+    }
+
+    sealed interface HudStatus {
+        data object Idle : HudStatus
+        data class Displayed(val truncated: Boolean) : HudStatus
+        data object DisplayFailed : HudStatus
+    }
+
+    data class State(
+        val availablePersonas: List<ChatPersona> = ChatPersonas.all,
+        val selectedPersona: ChatPersona = ChatPersonas.Ershin,
+        val messages: List<UiMessage> = emptyList(),
+        val isSending: Boolean = false,
+        val apiKeyAvailable: Boolean = false,
+        val errorMessage: String? = null,
+        val hudStatus: HudStatus = HudStatus.Idle
+    )
+
+    private val _state = MutableStateFlow(State())
+    val state: StateFlow<State> = _state.asStateFlow()
+
+    private val history = ArrayDeque<ChatMessageData>()
+    private var nextMessageId = 0L
+
+    init {
+        viewModelScope.launch {
+            chatRepository.observeApiKey().collectLatest { key ->
+                _state.update { state ->
+                    state.copy(apiKeyAvailable = !key.isNullOrBlank())
+                }
+            }
+        }
+    }
+
+    fun onPersonaSelected(persona: ChatPersona) {
+        _state.update { state ->
+            state.copy(
+                selectedPersona = persona,
+                messages = emptyList(),
+                hudStatus = HudStatus.Idle,
+                errorMessage = null
+            )
+        }
+        history.clear()
+    }
+
+    fun sendPrompt(prompt: String) {
+        val trimmed = prompt.trim()
+        if (trimmed.isEmpty() || _state.value.isSending) {
+            return
+        }
+
+        val persona = _state.value.selectedPersona
+        val userMessage = ChatMessageData(role = "user", content = trimmed)
+        val uiMessage = UiMessage(id = nextId(), role = UiMessage.Role.USER, text = trimmed)
+
+        history.addLast(userMessage)
+        enforceHistoryLimit()
+
+        _state.update { state ->
+            state.copy(
+                messages = state.messages + uiMessage,
+                isSending = true,
+                errorMessage = null,
+                hudStatus = HudStatus.Idle
+            )
+        }
+
+        viewModelScope.launch {
+            val result = chatRepository.requestChatCompletion(persona, history.toList())
+            result.fold(
+                onSuccess = { content ->
+                    handleAssistantResponse(content, persona)
+                },
+                onFailure = { throwable ->
+                    if (history.isNotEmpty()) {
+                        history.removeLast()
+                    }
+                    _state.update { state ->
+                        state.copy(
+                            isSending = false,
+                            errorMessage = throwable.message ?: "ChatGPT request failed",
+                            hudStatus = HudStatus.Idle
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun clearError() {
+        _state.update { it.copy(errorMessage = null) }
+    }
+
+    fun clearHudStatus() {
+        _state.update { it.copy(hudStatus = HudStatus.Idle) }
+    }
+
+    private fun handleAssistantResponse(content: String, persona: ChatPersona) {
+        val assistantMessage = ChatMessageData(role = "assistant", content = content)
+        history.addLast(assistantMessage)
+        enforceHistoryLimit()
+
+        val uiMessage = UiMessage(id = nextId(), role = UiMessage.Role.ASSISTANT, text = content)
+        val formatted = HudFormatter.format(content)
+
+        _state.update { state ->
+            state.copy(
+                messages = state.messages + uiMessage,
+                isSending = false,
+                hudStatus = HudStatus.Idle
+            )
+        }
+
+        viewModelScope.launch {
+            val displayed = serviceRepository.displayCenteredOnConnectedGlasses(
+                formatted.lines,
+                persona.hudHoldMillis
+            )
+
+            _state.update { state ->
+                state.copy(
+                    hudStatus = if (displayed) {
+                        HudStatus.Displayed(formatted.truncated)
+                    } else {
+                        HudStatus.DisplayFailed
+                    }
+                )
+            }
+        }
+    }
+
+    private fun enforceHistoryLimit() {
+        while (history.size > HISTORY_LIMIT) {
+            history.removeFirst()
+        }
+    }
+
+    private fun nextId(): Long = nextMessageId++
+
+    companion object {
+        private const val HISTORY_LIMIT = 8
+    }
+}

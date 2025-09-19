@@ -17,6 +17,9 @@ datastore = "1.1.2"
 basisClient = "1.1.1"
 basisService = "1.1.0"
 materialIcons = "1.7.7"
+securityCrypto = "1.1.0-alpha06"
+okhttp = "4.12.0"
+lifecycleRuntimeCompose = "2.8.7"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -41,6 +44,10 @@ androidx-datastore = { group = "androidx.datastore", name = "datastore-preferenc
 basis-client = { group = "io.texne.g1.basis", name = "client", version.ref = "basisClient"}
 basis-service = { group = "io.texne.g1.basis", name = "service", version.ref = "basisService"}
 androidx-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIcons"}
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
+androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycleRuntimeCompose" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

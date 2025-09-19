@@ -19,17 +19,45 @@ class Repository @Inject constructor(
         return true
     }
 
-    fun unbindService() =
-        service.close()
+    fun unbindService() {
+        if(::service.isInitialized) {
+            service.close()
+        }
+    }
 
-    fun startLooking() =
-        service.lookForGlasses()
+    fun startLooking() {
+        if(::service.isInitialized) {
+            service.lookForGlasses()
+        }
+    }
 
     suspend fun connectGlasses(id: String) =
         service.connect(id)
 
     fun disconnectGlasses(id: String) =
         service.disconnect(id)
+
+    fun connectedGlasses(): List<G1ServiceCommon.Glasses> =
+        if(::service.isInitialized) service.listConnectedGlasses() else emptyList()
+
+    suspend fun displayCenteredOnConnectedGlasses(
+        lines: List<String>,
+        holdMillis: Long? = 5_000L
+    ): Boolean {
+        if(!::service.isInitialized) {
+            return false
+        }
+        val connected = service.listConnectedGlasses().firstOrNull() ?: return false
+        return service.displayCentered(connected.id, lines, holdMillis)
+    }
+
+    suspend fun stopDisplayingOnConnectedGlasses(): Boolean {
+        if(!::service.isInitialized) {
+            return false
+        }
+        val connected = service.listConnectedGlasses().firstOrNull() ?: return false
+        return service.stopDisplaying(connected.id)
+    }
 
     private lateinit var service: G1ServiceManager
 }

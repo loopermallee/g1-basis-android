@@ -24,6 +24,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
@@ -57,10 +58,15 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.icons.extended)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
     implementation(project(":service"))
     implementation(project(":client"))
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
 
     kapt(libs.hilt.android.compiler)
 }
