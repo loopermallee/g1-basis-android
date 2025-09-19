@@ -17,9 +17,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,19 +33,18 @@ import io.texne.g1.hub.ui.settings.SettingsScreen
 @Composable
 fun ApplicationFrame() {
     val viewModel = hiltViewModel<ApplicationViewModel>()
-    val state = viewModel.state.collectAsState().value
-
-    var selectedSection by rememberSaveable { mutableStateOf(AppSection.GLASSES) }
+    val state by viewModel.state.collectAsState()
+    val selectedSection = state.selectedSection
 
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
         Header(
             selectedSection = selectedSection,
-            onSectionSelected = { selectedSection = it }
+            onSectionSelected = viewModel::selectSection
         )
 
-        val connectedGlasses = state?.connectedGlasses
+        val connectedGlasses = state.connectedGlasses
 
         when (selectedSection) {
             AppSection.GLASSES -> {
@@ -59,9 +55,9 @@ fun ApplicationFrame() {
                     )
                 } else {
                     ScannerScreen(
-                        scanning = state?.scanning == true,
-                        error = state?.error == true,
-                        nearbyGlasses = state?.nearbyGlasses,
+                        scanning = state.scanning,
+                        error = state.error,
+                        nearbyGlasses = state.nearbyGlasses,
                         scan = { viewModel.scan() },
                         connect = { viewModel.connect(it) },
                     )
@@ -70,7 +66,7 @@ fun ApplicationFrame() {
             AppSection.ASSISTANT -> {
                 ChatScreen(
                     connectedGlassesName = connectedGlasses?.name,
-                    onNavigateToSettings = { selectedSection = AppSection.SETTINGS }
+                    onNavigateToSettings = { viewModel.selectSection(AppSection.SETTINGS) }
                 )
             }
             AppSection.SETTINGS -> {

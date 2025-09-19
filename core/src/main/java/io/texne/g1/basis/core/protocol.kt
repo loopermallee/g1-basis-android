@@ -77,6 +77,8 @@ enum class IncomingPacketType(
     EXIT("EXIT", hasFirst(0x18), { ExitResponsePacket(it) }),
     GLASSES_BATTERY_LEVEL("GLASSES_BATTERY_LEVEL", hasFirstTwo(0x2C, 0x66), { BatteryLevelResponsePacket(it) }),
     AI_RESULT_RECEIVED("AI_RESULT_RECEIVED", hasFirst(0x4E), { SendTextResponsePacket(it) }),
+    GESTURE_TAP("GESTURE_TAP", hasFirst(0x29), { GesturePacket(this@IncomingPacketType, it, G1Gesture.Type.TAP) }),
+    GESTURE_HOLD("GESTURE_HOLD", hasFirst(0x2B), { GesturePacket(this@IncomingPacketType, it, G1Gesture.Type.HOLD) }),
 ;
     override fun toString() = label
 }
@@ -188,3 +190,13 @@ class SendTextResponsePacket(bytes: ByteArray): IncomingPacket(
     bytes,
     OutgoingPacketType.SEND_AI_RESULT
 )
+
+// gestures
+
+class GesturePacket(
+    type: IncomingPacketType,
+    bytes: ByteArray,
+    val gestureType: G1Gesture.Type,
+): IncomingPacket(type, bytes) {
+    val timestampMillis: Long = System.currentTimeMillis()
+}

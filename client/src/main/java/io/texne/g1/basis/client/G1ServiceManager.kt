@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
 import io.texne.g1.basis.service.protocol.G1Glasses
+import io.texne.g1.basis.service.protocol.G1GestureEvent
 import io.texne.g1.basis.service.protocol.G1ServiceState
 import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
@@ -31,6 +32,8 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
         }
     }
 
+    private var lastGestureSequence: Int = 0
+
     override val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(
             name: ComponentName?,
@@ -40,6 +43,31 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
             service?.observeState(object : ObserveStateCallback.Stub() {
                 override fun onStateChange(newState: G1ServiceState?) {
                     if(newState != null) {
+                        newState.gestureEvent?.let { event ->
+                            if(event.sequence > lastGestureSequence) {
+                                lastGestureSequence = event.sequence
+                                val type = when(event.type) {
+                                    G1GestureEvent.TYPE_TAP -> GestureType.TAP
+                                    G1GestureEvent.TYPE_HOLD -> GestureType.HOLD
+                                    else -> null
+                                }
+                                val side = when(event.side) {
+                                    G1GestureEvent.SIDE_LEFT -> GestureSide.LEFT
+                                    G1GestureEvent.SIDE_RIGHT -> GestureSide.RIGHT
+                                    else -> null
+                                }
+                                if(type != null && side != null) {
+                                    writableGestures.tryEmit(
+                                        GestureEvent(
+                                            sequence = event.sequence,
+                                            type = type,
+                                            side = side,
+                                            timestampMillis = event.timestampMillis
+                                        )
+                                    )
+                                }
+                            }
+                        }
                         writableState.value = State(
                             status = when(newState.status) {
                                 G1ServiceState.READY -> ServiceStatus.READY
@@ -68,6 +96,7 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
 
         override fun onServiceDisconnected(name: ComponentName?) {
             service = null
+            lastGestureSequence = 0
         }
     }
 

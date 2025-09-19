@@ -3,7 +3,10 @@ package io.texne.g1.basis.client
 import android.content.Context
 import android.content.ServiceConnection
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.Closeable
 import kotlin.collections.any
@@ -38,6 +41,23 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         MutableStateFlow<State?>(null)
 
     val state = writableState.asStateFlow()
+
+    enum class GestureType { TAP, HOLD }
+    enum class GestureSide { LEFT, RIGHT }
+
+    data class GestureEvent(
+        val sequence: Int,
+        val type: GestureType,
+        val side: GestureSide,
+        val timestampMillis: Long
+    )
+
+    protected val writableGestures = MutableSharedFlow<GestureEvent>(
+        replay = 0,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val gestures = writableGestures.asSharedFlow()
 
     protected var service: ServiceInterface? = null
     abstract protected val serviceConnection: ServiceConnection
