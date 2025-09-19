@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.ble.ktx.suspend
@@ -34,6 +36,8 @@ internal class G1Device(
 
     private val writableState = MutableStateFlow<State>(State())
     val state = writableState.asStateFlow()
+    private val writableGestures = MutableSharedFlow<GlassesGesture>(extraBufferCapacity = 8)
+    val gestures = writableGestures.asSharedFlow()
 
     // manager -------------------------------------------------------------------------------------
 
@@ -71,7 +75,12 @@ internal class G1Device(
                                 request.callback.invoke(packet)
                                 advanceQueue()
                             } else {
-                                // TODO: emit it as an unrequested packet
+                                when (packet) {
+                                    is GesturePacket -> writableGestures.tryEmit(packet.gesture)
+                                    else -> {
+                                        // TODO: emit other unsolicited packets if needed
+                                    }
+                                }
                             }
                         }
                     }

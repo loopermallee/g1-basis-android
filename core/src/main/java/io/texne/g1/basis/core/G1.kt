@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.merge
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanResult
@@ -54,6 +55,7 @@ class G1 {
     )
     val state: StateFlow<State>
     private var currentState: State? = null
+    val gestures = merge(left.gestures, right.gestures)
 
     // construction --------------------------------------------------------------------------------
 

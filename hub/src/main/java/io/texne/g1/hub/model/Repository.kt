@@ -4,26 +4,47 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceManager
+import io.texne.g1.basis.service.protocol.HudGesture
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 
 @Singleton
 class Repository @Inject constructor(
     @ApplicationContext private val applicationContext: Context
 ) {
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val gestureEvents = MutableSharedFlow<HudGesture>(replay = 0, extraBufferCapacity = 16)
+    private var gestureJob: Job? = null
+
     fun getServiceStateFlow() =
         service.state
 
     fun bindService(): Boolean {
         service = G1ServiceManager.open(applicationContext) ?: return false
+        gestureJob?.cancel()
+        gestureJob = scope.launch {
+            service.observeHudGestures().collect { gestureEvents.emit(it) }
+        }
         return true
     }
 
     fun unbindService() {
         if(::service.isInitialized) {
+            gestureJob?.cancel()
+            gestureJob = null
             service.close()
         }
     }
+
+    fun observeHudGestures(): SharedFlow<HudGesture> = gestureEvents.asSharedFlow()
 
     fun startLooking() {
         if(::service.isInitialized) {
@@ -96,6 +117,10 @@ class Repository @Inject constructor(
 
     internal fun setServiceManagerForTest(serviceManager: G1ServiceManager) {
         service = serviceManager
+    }
+
+    internal suspend fun emitGestureForTest(gesture: HudGesture) {
+        gestureEvents.emit(gesture)
     }
 
     private lateinit var service: G1ServiceManager

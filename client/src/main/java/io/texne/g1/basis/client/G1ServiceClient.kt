@@ -7,12 +7,19 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
+import io.texne.g1.basis.service.protocol.GestureCallback
+import io.texne.g1.basis.service.protocol.HudGesture
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1ServiceClient>(context) {
+
+    private val gestureEvents = MutableSharedFlow<HudGesture>(replay = 0, extraBufferCapacity = 16)
 
     companion object {
         fun open(context: Context): G1ServiceClient? {
@@ -70,11 +77,18 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
                     }
                 }
             })
+            service?.observeHudGestures(object : GestureCallback.Stub() {
+                override fun onGesture(gesture: Int) {
+                    HudGesture.fromWireValue(gesture)?.let { gestureEvents.tryEmit(it) }
+                }
+            })
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             service = null
         }
     }
+
+    fun observeHudGestures(): SharedFlow<HudGesture> = gestureEvents.asSharedFlow()
 
 
     override suspend fun displayTextPage(id: String, page: List<String>) =

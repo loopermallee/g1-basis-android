@@ -33,9 +33,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +57,7 @@ fun ChatScreen(
         connectedGlassesName = connectedGlassesName,
         onPersonaSelected = viewModel::onPersonaSelected,
         onSendPrompt = viewModel::sendPrompt,
+        onPromptChanged = viewModel::onPromptChanged,
         onNavigateToSettings = onNavigateToSettings,
         onDismissError = viewModel::clearError,
         onHudStatusConsumed = viewModel::clearHudStatus
@@ -72,12 +70,12 @@ private fun ChatContent(
     connectedGlassesName: String?,
     onPersonaSelected: (ChatPersona) -> Unit,
     onSendPrompt: (String) -> Unit,
+    onPromptChanged: (String) -> Unit,
     onNavigateToSettings: () -> Unit,
     onDismissError: () -> Unit,
     onHudStatusConsumed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var prompt by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     LaunchedEffect(state.messages.size) {
@@ -188,8 +186,8 @@ private fun ChatContent(
         ) {
             OutlinedTextField(
                 modifier = Modifier.weight(1f),
-                value = prompt,
-                onValueChange = { prompt = it },
+                value = state.promptDraft,
+                onValueChange = onPromptChanged,
                 label = { Text("Ask the assistant") },
                 maxLines = 3,
                 supportingText = {
@@ -204,12 +202,11 @@ private fun ChatContent(
                 }
             )
 
-            val sendEnabled = prompt.isNotBlank() && state.apiKeyAvailable && !state.isSending
+            val sendEnabled = state.promptDraft.isNotBlank() && state.apiKeyAvailable && !state.isSending
             IconButton(
                 onClick = {
                     if (sendEnabled) {
-                        onSendPrompt(prompt.trim())
-                        prompt = ""
+                        onSendPrompt(state.promptDraft)
                     }
                 },
                 enabled = sendEnabled

@@ -3,6 +3,7 @@ package io.texne.g1.hub.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.texne.g1.basis.service.protocol.HudGesture
 import io.texne.g1.hub.ai.ChatGptRepository
 import io.texne.g1.hub.ai.ChatGptRepository.ChatMessageData
 import io.texne.g1.hub.ai.ChatPersona
@@ -45,7 +46,8 @@ class ChatViewModel @Inject constructor(
         val isSending: Boolean = false,
         val apiKeyAvailable: Boolean = false,
         val errorMessage: String? = null,
-        val hudStatus: HudStatus = HudStatus.Idle
+        val hudStatus: HudStatus = HudStatus.Idle,
+        val promptDraft: String = ""
     )
 
     private val _state = MutableStateFlow(State())
@@ -64,6 +66,15 @@ class ChatViewModel @Inject constructor(
                 }
             }
         }
+        viewModelScope.launch {
+            serviceRepository.observeHudGestures().collect { gesture ->
+                handleHudGesture(gesture)
+            }
+        }
+    }
+
+    fun onPromptChanged(prompt: String) {
+        _state.update { it.copy(promptDraft = prompt) }
     }
 
     fun onPersonaSelected(persona: ChatPersona) {
@@ -98,7 +109,8 @@ class ChatViewModel @Inject constructor(
                 messages = state.messages + uiMessage,
                 isSending = true,
                 errorMessage = null,
-                hudStatus = HudStatus.Idle
+                hudStatus = HudStatus.Idle,
+                promptDraft = ""
             )
         }
 
@@ -130,6 +142,15 @@ class ChatViewModel @Inject constructor(
 
     fun clearHudStatus() {
         _state.update { it.copy(hudStatus = HudStatus.Idle) }
+    }
+
+    fun onGestureActivate() {
+        val currentState = _state.value
+        val prompt = currentState.promptDraft
+        if (prompt.isBlank() || currentState.isSending) {
+            return
+        }
+        sendPrompt(prompt)
     }
 
     private fun handleAssistantResponse(content: String, persona: ChatPersona) {
@@ -194,6 +215,25 @@ class ChatViewModel @Inject constructor(
                     state.copy(hudStatus = HudStatus.DisplayFailed)
                 }
             }
+        }
+    }
+
+    private fun handleHudGesture(gesture: HudGesture) {
+        when (gesture) {
+            HudGesture.ACTIVATE -> onGestureActivate()
+            HudGesture.NEXT_PAGE -> requestRelativeHudPage(1)
+            HudGesture.PREVIOUS_PAGE -> requestRelativeHudPage(-1)
+        }
+    }
+
+    private fun requestRelativeHudPage(offset: Int) {
+        val pages = interactiveHudPages
+        if (pages.isEmpty()) {
+            return
+        }
+        val target = (interactiveHudCurrentPageIndex + offset).coerceIn(0, pages.lastIndex)
+        if (target != interactiveHudCurrentPageIndex) {
+            onHudPageRequested(target)
         }
     }
 

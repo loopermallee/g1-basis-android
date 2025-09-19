@@ -7,12 +7,19 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
+import io.texne.g1.basis.service.protocol.GestureCallback
+import io.texne.g1.basis.service.protocol.HudGesture
 import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG1Service>(context) {
+
+    private val gestureEvents = MutableSharedFlow<HudGesture>(replay = 0, extraBufferCapacity = 16)
 
     companion object {
         fun open(context: Context): G1ServiceManager? {
@@ -64,12 +71,19 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
                     }
                 }
             })
+            service?.observeHudGestures(object : GestureCallback.Stub() {
+                override fun onGesture(gesture: Int) {
+                    HudGesture.fromWireValue(gesture)?.let { gestureEvents.tryEmit(it) }
+                }
+            })
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             service = null
         }
     }
+
+    fun observeHudGestures(): SharedFlow<HudGesture> = gestureEvents.asSharedFlow()
 
     fun lookForGlasses() {
         service?.lookForGlasses()

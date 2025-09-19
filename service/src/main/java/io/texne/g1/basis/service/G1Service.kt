@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.RemoteCallbackList
+import android.os.RemoteException
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -20,12 +22,16 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.nabinbhandari.android.permissions.PermissionHandler
 import com.nabinbhandari.android.permissions.Permissions
 import io.texne.g1.basis.core.G1
+import io.texne.g1.basis.core.GlassesGesture
 import io.texne.g1.basis.service.protocol.G1Glasses
-import io.texne.g1.basis.service.protocol.ObserveStateCallback
-import io.texne.g1.basis.service.protocol.OperationCallback
 import io.texne.g1.basis.service.protocol.G1ServiceState
+import io.texne.g1.basis.service.protocol.GestureCallback
+import io.texne.g1.basis.service.protocol.HudGesture
 import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
+import io.texne.g1.basis.service.protocol.ObserveStateCallback
+import io.texne.g1.basis.service.protocol.OperationCallback
+import io.texne.g1.basis.service.protocol.toWireValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -149,6 +155,12 @@ class G1Service: Service() {
             id: String?,
             callback: OperationCallback?
         ) = commonStopDisplaying(id, callback)
+
+        override fun observeHudGestures(callback: GestureCallback?) {
+            if (callback != null) {
+                gestureCallbacks.register(callback)
+            }
+        }
     }
 
     private val binder = object : IG1Service.Stub() {
@@ -215,6 +227,14 @@ class G1Service: Service() {
                                                     )
                                                 }
                                             })
+                                    }
+                                }
+                                coroutineScope.launch {
+                                    found.gestures.collect { gesture ->
+                                        val hudGesture = mapGestureToHud(gesture)
+                                        if (hudGesture != null) {
+                                            notifyGesture(hudGesture)
+                                        }
                                     }
                                 }
 
@@ -284,6 +304,33 @@ class G1Service: Service() {
 
         override fun stopDisplaying(id: String?, callback: OperationCallback?) =
             commonStopDisplaying(id, callback)
+
+        override fun observeHudGestures(callback: GestureCallback?) {
+            if (callback != null) {
+                gestureCallbacks.register(callback)
+            }
+        }
+    }
+
+    private fun notifyGesture(gesture: HudGesture) {
+        val count = gestureCallbacks.beginBroadcast()
+        for (index in 0 until count) {
+            try {
+                gestureCallbacks.getBroadcastItem(index).onGesture(gesture.toWireValue())
+            } catch (e: RemoteException) {
+                Log.w("G1Service", "Failed to deliver gesture $gesture", e)
+            }
+        }
+        gestureCallbacks.finishBroadcast()
+    }
+
+    private fun mapGestureToHud(gesture: GlassesGesture): HudGesture? = when (gesture) {
+        GlassesGesture.SINGLE_TAP,
+        GlassesGesture.DOUBLE_TAP,
+        GlassesGesture.LONG_PRESS -> HudGesture.ACTIVATE
+        GlassesGesture.SWIPE_FORWARD -> HudGesture.NEXT_PAGE
+        GlassesGesture.SWIPE_BACK -> HudGesture.PREVIOUS_PAGE
+        GlassesGesture.UNKNOWN -> null
     }
 
     // infrastructure ------------------------------------------------------------------------------
@@ -386,6 +433,7 @@ class G1Service: Service() {
                 it.g1.disconnect()
             }
         }
+        gestureCallbacks.kill()
         onDestroy()
     }
 }

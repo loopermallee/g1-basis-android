@@ -77,6 +77,7 @@ enum class IncomingPacketType(
     EXIT("EXIT", hasFirst(0x18), { ExitResponsePacket(it) }),
     GLASSES_BATTERY_LEVEL("GLASSES_BATTERY_LEVEL", hasFirstTwo(0x2C, 0x66), { BatteryLevelResponsePacket(it) }),
     AI_RESULT_RECEIVED("AI_RESULT_RECEIVED", hasFirst(0x4E), { SendTextResponsePacket(it) }),
+    GESTURE_EVENT("GESTURE_EVENT", hasFirst(0x29), { GesturePacket(it) }),
 ;
     override fun toString() = label
 }
@@ -188,3 +189,16 @@ class SendTextResponsePacket(bytes: ByteArray): IncomingPacket(
     bytes,
     OutgoingPacketType.SEND_AI_RESULT
 )
+
+// gestures -----------------------------------------------------------------------------------------
+
+class GesturePacket(bytes: ByteArray): IncomingPacket(
+    IncomingPacketType.GESTURE_EVENT,
+    bytes
+) {
+    val gesture: GlassesGesture = GlassesGesture.fromRaw(bytes.getOrNull(1)?.toInt() ?: -1)
+
+    override fun toString(): String {
+        return "${type} => ${gesture} (${bytes.joinToString(separator = " ") { String.format("%02x", it) }})"
+    }
+}
