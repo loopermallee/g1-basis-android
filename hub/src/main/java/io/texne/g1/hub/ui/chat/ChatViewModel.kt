@@ -8,12 +8,15 @@ import io.texne.g1.hub.ai.ChatGptRepository.ChatMessageData
 import io.texne.g1.hub.ai.ChatPersona
 import io.texne.g1.hub.ai.ChatPersonas
 import io.texne.g1.hub.ai.HudFormatter
+import io.texne.g1.hub.hud.HudStatusComposer
 import io.texne.g1.hub.model.Repository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.collections.ArrayDeque
@@ -21,7 +24,8 @@ import kotlin.collections.ArrayDeque
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatGptRepository,
-    private val serviceRepository: Repository
+    private val serviceRepository: Repository,
+    hudStatusComposer: HudStatusComposer
 ) : ViewModel() {
 
     data class UiMessage(
@@ -34,7 +38,12 @@ class ChatViewModel @Inject constructor(
 
     sealed interface HudStatus {
         data object Idle : HudStatus
-        data class Displayed(val truncated: Boolean, val pageCount: Int) : HudStatus
+        data class Displayed(
+            val truncated: Boolean,
+            val pageCount: Int,
+            val hudLines: List<String>,
+            val hudTruncated: Boolean
+        ) : HudStatus
         data object DisplayFailed : HudStatus
     }
 
@@ -52,6 +61,11 @@ class ChatViewModel @Inject constructor(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private val history = ArrayDeque<ChatMessageData>()
+    private val hudStatusOverlay = hudStatusComposer.status.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = HudStatusComposer.Payload.Empty
+    )
     private var nextMessageId = 0L
 
     init {
@@ -135,6 +149,13 @@ class ChatViewModel @Inject constructor(
 
         val uiMessage = UiMessage(id = nextId(), role = UiMessage.Role.ASSISTANT, text = content)
         val formatted = HudFormatter.format(content)
+        val hudOverlay = hudStatusOverlay.value
+        val pagesToSend = buildList {
+            if (hudOverlay.lines.isNotEmpty()) {
+                add(hudOverlay.lines)
+            }
+            addAll(formatted.pages)
+        }
 
         _state.update { state ->
             state.copy(
@@ -146,7 +167,7 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             val displayed = serviceRepository.displayCenteredOnConnectedGlasses(
-                formatted.pages,
+                pagesToSend,
                 persona.hudHoldMillis
             )
 
@@ -155,7 +176,9 @@ class ChatViewModel @Inject constructor(
                     hudStatus = if (displayed) {
                         HudStatus.Displayed(
                             truncated = formatted.truncated,
-                            pageCount = formatted.pages.size
+                            pageCount = pagesToSend.size,
+                            hudLines = hudOverlay.lines,
+                            hudTruncated = hudOverlay.truncated
                         )
                     } else {
                         HudStatus.DisplayFailed

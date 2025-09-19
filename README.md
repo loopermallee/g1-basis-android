@@ -47,6 +47,12 @@ Bring your own OpenAI API key from the **Settings** tab and the app will store i
 Responses are auto-paginated into four-line, 32-character pages before being streamed to the connected glasses so the monochrome HUD stays glanceable.
 Two starter personalities (Ershin and Fou-Lu) are available to quickly change tone and verbosity.
 
+The Settings tab also exposes a **HUD widgets** editor backed by DataStore so you can choose which glanceable modules (clock, weather, headlines, notification counter, etc.) should render next to the assistant output and how they are ordered. Toggle any widget off, drag it lower in priority with the provided controls, and the new configuration is persisted across launches.
+
+Integrating live data sources for the widgets requires additional credentials: supply your weather provider key (for example `WEATHER_API_KEY`) and preferred news API key (for example `NEWS_API_KEY`) via `local.properties` or environment variables so the `WeatherRepository` and `NewsRepository` can hydrate their flows.
+
+> **Note:** The Hub now requests the `INTERNET` permission for polling external APIs and `POST_NOTIFICATIONS` so the notification counter can reflect foreground alerts. Approve both at install time to unlock the full HUD status experience.
+
 *(more details coming soon)*
 
 ## Client

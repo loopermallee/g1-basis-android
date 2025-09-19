@@ -130,20 +130,37 @@ private fun ChatContent(
                 )
             }
             is ChatViewModel.HudStatus.Displayed -> {
-                val message = when {
-                    hudStatus.pageCount > 1 && hudStatus.truncated ->
-                        "Response paginated across ${hudStatus.pageCount} HUD pages (trimmed to fit width)."
-                    hudStatus.pageCount > 1 ->
-                        if (hudStatus.pageCount == 2) {
+                val overlayPresent = hudStatus.hudLines.isNotEmpty()
+                val messagePageCount = hudStatus.pageCount - if (overlayPresent) 1 else 0
+                val parts = mutableListOf<String>()
+                parts += when {
+                    messagePageCount > 1 && hudStatus.truncated ->
+                        "Response paginated across ${messagePageCount} HUD pages (trimmed to fit width)."
+                    messagePageCount > 1 ->
+                        if (messagePageCount == 2) {
                             "Response paginated across 2 HUD pages."
                         } else {
-                            "Response paginated across ${hudStatus.pageCount} HUD pages."
+                            "Response paginated across ${messagePageCount} HUD pages."
                         }
-                    hudStatus.truncated ->
+                    messagePageCount == 1 && hudStatus.truncated ->
                         "Response shown on the HUD (trimmed to fit)."
+                    messagePageCount == 1 ->
+                        "Response sent to the HUD."
+                    overlayPresent && hudStatus.hudTruncated ->
+                        "HUD status overlay trimmed to fit."
+                    overlayPresent ->
+                        "HUD status overlay sent."
                     else ->
                         "Response sent to the HUD."
                 }
+                if (overlayPresent && messagePageCount > 0) {
+                    parts += if (hudStatus.hudTruncated) {
+                        "HUD status overlay trimmed to fit."
+                    } else {
+                        "HUD status overlay sent."
+                    }
+                }
+                val message = parts.joinToString(" ")
                 HudStatusCard(text = message, onDismiss = onHudStatusConsumed)
             }
             ChatViewModel.HudStatus.Idle -> Unit

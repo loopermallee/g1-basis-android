@@ -8,8 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -20,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,13 +40,17 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.texne.g1.hub.settings.HudWidget
+import io.texne.g1.hub.settings.HudWidgetType
 
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel(),
+    hudSettingsViewModel: HudSettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val hudState by hudSettingsViewModel.state.collectAsStateWithLifecycle()
     var revealKey by rememberSaveable { mutableStateOf(false) }
 
     Column(
@@ -101,6 +112,13 @@ fun SettingsScreen(
             StatusMessage(message = message, onDismiss = viewModel::consumeMessage)
         }
 
+        HudWidgetSection(
+            widgets = hudState.widgets,
+            onToggle = hudSettingsViewModel::setEnabled,
+            onMoveUp = hudSettingsViewModel::moveUp,
+            onMoveDown = hudSettingsViewModel::moveDown
+        )
+
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -139,4 +157,104 @@ private fun StatusMessage(message: String, onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun HudWidgetSection(
+    widgets: List<HudWidget>,
+    onToggle: (HudWidgetType, Boolean) -> Unit,
+    onMoveUp: (HudWidgetType) -> Unit,
+    onMoveDown: (HudWidgetType) -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "HUD Widgets",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Choose what appears on the glasses status bar and reorder the priority. The first enabled widget renders first.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            widgets.forEachIndexed { index, widget ->
+                HudWidgetRow(
+                    widget = widget,
+                    isFirst = index == 0,
+                    isLast = index == widgets.lastIndex,
+                    onToggle = { enabled -> onToggle(widget.type, enabled) },
+                    onMoveUp = { onMoveUp(widget.type) },
+                    onMoveDown = { onMoveDown(widget.type) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HudWidgetRow(
+    widget: HudWidget,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onToggle: (Boolean) -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(imageVector = iconFor(widget.type), contentDescription = null)
+            Column {
+                Text(
+                    text = widget.type.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = widget.type.emoji,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = onMoveUp, enabled = !isFirst) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = "Move up"
+                    )
+                }
+                IconButton(onClick = onMoveDown, enabled = !isLast) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Move down"
+                    )
+                }
+            }
+            Switch(
+                checked = widget.enabled,
+                onCheckedChange = onToggle
+            )
+        }
+    }
+}
+
+@Composable
+private fun iconFor(type: HudWidgetType) = when (type) {
+    HudWidgetType.CLOCK -> Icons.Default.AccessTime
+    HudWidgetType.WEATHER -> Icons.Default.WbSunny
+    HudWidgetType.NEWS -> Icons.Default.Article
+    HudWidgetType.NOTIFICATIONS -> Icons.Default.Notifications
 }
