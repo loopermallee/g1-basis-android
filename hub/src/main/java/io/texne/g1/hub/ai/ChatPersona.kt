@@ -7,7 +7,7 @@ data class ChatPersona(
     val systemPrompt: String,
     val temperature: Double = 0.7,
     val maxTokens: Int = 220,
-    val hudHoldMillis: Long = 5_000L
+    val hudHoldMillis: Long? = 5_000L
 )
 
 object ChatPersonas {

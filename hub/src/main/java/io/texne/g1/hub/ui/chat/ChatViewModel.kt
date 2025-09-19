@@ -53,6 +53,8 @@ class ChatViewModel @Inject constructor(
 
     private val history = ArrayDeque<ChatMessageData>()
     private var nextMessageId = 0L
+    private var interactiveHudPages: List<List<String>> = emptyList()
+    private var interactiveHudCurrentPageIndex = 0
 
     init {
         viewModelScope.launch {
@@ -74,6 +76,8 @@ class ChatViewModel @Inject constructor(
             )
         }
         history.clear()
+        interactiveHudPages = emptyList()
+        interactiveHudCurrentPageIndex = 0
     }
 
     fun sendPrompt(prompt: String) {
@@ -135,6 +139,9 @@ class ChatViewModel @Inject constructor(
 
         val uiMessage = UiMessage(id = nextId(), role = UiMessage.Role.ASSISTANT, text = content)
         val formatted = HudFormatter.format(content)
+        val interactivePages = formatted.pages.takeIf { pages ->
+            pages.size > 1 && persona.hudHoldMillis == null
+        }
 
         _state.update { state ->
             state.copy(
@@ -143,6 +150,9 @@ class ChatViewModel @Inject constructor(
                 hudStatus = HudStatus.Idle
             )
         }
+
+        interactiveHudPages = interactivePages ?: emptyList()
+        interactiveHudCurrentPageIndex = 0
 
         viewModelScope.launch {
             val displayed = serviceRepository.displayCenteredOnConnectedGlasses(
@@ -158,9 +168,31 @@ class ChatViewModel @Inject constructor(
                             pageCount = formatted.pages.size
                         )
                     } else {
+                        interactiveHudPages = emptyList()
+                        interactiveHudCurrentPageIndex = 0
                         HudStatus.DisplayFailed
                     }
                 )
+            }
+        }
+    }
+
+    fun onHudPageRequested(pageIndex: Int) {
+        val pages = interactiveHudPages
+        if (pages.isEmpty() || pageIndex !in pages.indices || pageIndex == interactiveHudCurrentPageIndex) {
+            return
+        }
+
+        viewModelScope.launch {
+            val success = serviceRepository.displayCenteredPageOnConnectedGlasses(pages, pageIndex)
+            if (success && interactiveHudPages === pages) {
+                interactiveHudCurrentPageIndex = pageIndex
+            } else if (!success) {
+                interactiveHudPages = emptyList()
+                interactiveHudCurrentPageIndex = 0
+                _state.update { state ->
+                    state.copy(hudStatus = HudStatus.DisplayFailed)
+                }
             }
         }
     }
