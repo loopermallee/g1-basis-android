@@ -34,7 +34,7 @@ class ChatViewModel @Inject constructor(
 
     sealed interface HudStatus {
         data object Idle : HudStatus
-        data class Displayed(val truncated: Boolean) : HudStatus
+        data class Displayed(val truncated: Boolean, val pageCount: Int) : HudStatus
         data object DisplayFailed : HudStatus
     }
 
@@ -146,14 +146,17 @@ class ChatViewModel @Inject constructor(
 
         viewModelScope.launch {
             val displayed = serviceRepository.displayCenteredOnConnectedGlasses(
-                formatted.lines,
+                formatted.pages,
                 persona.hudHoldMillis
             )
 
             _state.update { state ->
                 state.copy(
                     hudStatus = if (displayed) {
-                        HudStatus.Displayed(formatted.truncated)
+                        HudStatus.Displayed(
+                            truncated = formatted.truncated,
+                            pageCount = formatted.pages.size
+                        )
                     } else {
                         HudStatus.DisplayFailed
                     }

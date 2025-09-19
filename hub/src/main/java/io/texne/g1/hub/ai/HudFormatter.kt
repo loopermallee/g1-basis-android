@@ -1,94 +1,95 @@
 package io.texne.g1.hub.ai
 
 object HudFormatter {
+    private const val DEFAULT_MAX_LINES_PER_PAGE = 4
+    private const val DEFAULT_MAX_CHARS_PER_LINE = 32
+    private const val ELLIPSIS = "..."
     private val whitespaceRegex = Regex("""\s+""")
 
     data class Result(
-        val lines: List<String>,
+        val pages: List<List<String>>,
         val truncated: Boolean
     )
 
-    fun format(text: String, maxLines: Int = 5, maxCharsPerLine: Int = 40): Result {
+    fun format(
+        text: String,
+        maxLinesPerPage: Int = DEFAULT_MAX_LINES_PER_PAGE,
+        maxCharsPerLine: Int = DEFAULT_MAX_CHARS_PER_LINE
+    ): Result {
+        require(maxLinesPerPage > 0) { "maxLinesPerPage must be greater than 0" }
+        require(maxCharsPerLine > 0) { "maxCharsPerLine must be greater than 0" }
+
         val normalized = text
             .replace('\n', ' ')
             .replace(whitespaceRegex, " ")
             .trim()
 
         if (normalized.isEmpty()) {
-            return Result(lines = listOf(""), truncated = false)
+            return Result(pages = listOf(listOf("")), truncated = false)
         }
 
         val lines = mutableListOf<String>()
-        val current = StringBuilder()
+        var currentLine = StringBuilder()
         var truncated = false
 
-        val words = normalized.split(" ")
-        for (word in words) {
-            val candidate = if (current.isEmpty()) word else "${current} $word"
-            if (candidate.length <= maxCharsPerLine) {
-                current.clear()
-                current.append(candidate)
-            } else {
-                if (current.isNotEmpty()) {
-                    lines += current.toString()
-                    current.clear()
-                }
-                if (word.length > maxCharsPerLine) {
-                    val chunks = word.chunked(maxCharsPerLine)
-                    for (chunk in chunks.dropLast(1)) {
-                        lines += chunk
-                        if (lines.size == maxLines) {
-                            truncated = true
-                            break
-                        }
-                    }
-                    if (truncated) {
-                        break
-                    }
-                    current.append(chunks.last())
-                } else {
-                    current.append(word)
-                }
+        fun flushLine() {
+            if (currentLine.isNotEmpty()) {
+                lines += currentLine.toString()
+                currentLine = StringBuilder()
             }
+        }
 
-            if (lines.size == maxLines) {
+        normalized.split(" ").forEach { rawWord ->
+            if (rawWord.isEmpty()) return@forEach
+
+            val word = if (rawWord.length > maxCharsPerLine) {
                 truncated = true
-                break
-            }
-        }
-
-        if (!truncated && current.isNotEmpty()) {
-            lines += current.toString()
-        } else if (truncated && lines.size == maxLines - 1 && current.isNotEmpty()) {
-            lines += current.toString()
-        }
-
-        if (lines.isEmpty() && current.isNotEmpty()) {
-            lines += current.toString()
-        }
-
-        if (lines.size > maxLines) {
-            truncated = true
-        }
-
-        val trimmedLines = if (lines.size > maxLines) {
-            lines.take(maxLines)
-        } else {
-            lines
-        }
-
-        val output = if (truncated && trimmedLines.isNotEmpty()) {
-            val last = trimmedLines.last()
-            val adjusted = if (last.length >= maxCharsPerLine) {
-                last.take(maxCharsPerLine - 1) + "…"
+                truncateToFit(rawWord, maxCharsPerLine)
             } else {
-                (last + " …").take(maxCharsPerLine)
+                rawWord
             }
-            trimmedLines.dropLast(1) + adjusted
-        } else {
-            trimmedLines
+
+            val candidate = if (currentLine.isEmpty()) word else "${currentLine} $word"
+
+            if (candidate.length <= maxCharsPerLine) {
+                currentLine.clear()
+                currentLine.append(candidate)
+            } else {
+                flushLine()
+                if (word.length <= maxCharsPerLine) {
+                    currentLine.append(word)
+                } else {
+                    lines += word
+                }
+            }
         }
 
-        return Result(lines = output, truncated = truncated)
+        flushLine()
+
+        if (lines.isEmpty()) {
+            lines += ""
+        }
+
+        val sanitizedLines = lines.map { line ->
+            if (line.length <= maxCharsPerLine) {
+                line
+            } else {
+                truncated = true
+                truncateToFit(line, maxCharsPerLine)
+            }
+        }
+
+        val pages = sanitizedLines.chunked(maxLinesPerPage).ifEmpty {
+            listOf(listOf(""))
+        }
+
+        return Result(pages = pages, truncated = truncated)
+    }
+
+    private fun truncateToFit(text: String, maxChars: Int): String {
+        if (maxChars <= ELLIPSIS.length) {
+            return ELLIPSIS.take(maxChars)
+        }
+        return text.take(maxChars - ELLIPSIS.length) + ELLIPSIS
     }
 }

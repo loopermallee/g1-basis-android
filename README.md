@@ -44,7 +44,7 @@ It must be running on your phone and connected to the glasses for any apps using
 
 The Hub application now ships with an **Assistant** tab that talks directly to ChatGPT.
 Bring your own OpenAI API key from the **Settings** tab and the app will store it in encrypted SharedPreferences.
-Responses are auto-trimmed to five 40-character lines before being streamed to the connected glasses so the HUD stays readable.
+Responses are auto-paginated into four-line, 32-character pages before being streamed to the connected glasses so the monochrome HUD stays glanceable.
 Two starter personalities (Ershin and Fou-Lu) are available to quickly change tone and verbosity.
 
 *(more details coming soon)*
