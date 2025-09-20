@@ -17,9 +17,11 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.R
+import io.texne.g1.hub.ui.ApplicationViewModel.RetryCountdown
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,8 +39,11 @@ fun ScannerScreen(
     scanning: Boolean,
     error: Boolean,
     nearbyGlasses: List<G1ServiceCommon.Glasses>?,
+    retry: RetryCountdown?,
     scan: () -> Unit,
-    connect: (id: String) -> Unit
+    connect: (id: String) -> Unit,
+    cancelRetry: (id: String) -> Unit,
+    retryNow: (id: String) -> Unit
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
 
@@ -58,7 +64,10 @@ fun ScannerScreen(
                     items(nearbyGlasses!!.size) {
                         GlassesItem(
                             nearbyGlasses[it],
-                            { connect(nearbyGlasses[it].id) }
+                            retry?.takeIf { countdown -> countdown.glassesId == nearbyGlasses[it].id },
+                            { connect(nearbyGlasses[it].id) },
+                            { cancelRetry(nearbyGlasses[it].id) },
+                            { retryNow(nearbyGlasses[it].id) }
                         )
                     }
                 }
@@ -104,8 +113,16 @@ fun ScannerScreen(
 @Composable
 fun GlassesItem(
     glasses: G1ServiceCommon.Glasses,
-    connect: () -> Unit
+    retry: RetryCountdown?,
+    connect: () -> Unit,
+    cancelRetry: () -> Unit,
+    retryNow: () -> Unit
 ) {
+    LaunchedEffect(retry?.glassesId, retry?.readyToRetry) {
+        if (retry?.readyToRetry == true) {
+            connect()
+        }
+    }
     Box(
         Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -121,7 +138,8 @@ fun GlassesItem(
                     .padding(16.dp)
             ) {
                 Row(
-                    Modifier.fillMaxWidth().weight(1f)
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.weight(1f)) {
                         Image(
@@ -159,20 +177,40 @@ fun GlassesItem(
                         }
                     }
                 }
-                Row(
-                    Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy((-8).dp)
-                    ) {
+                    Text(
+                        text = glasses.name,
+                        fontSize = 24.sp,
+                        color = Color.Black,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
+                    if (retry != null) {
                         Text(
-                            text = glasses.name,
-                            fontSize = 24.sp,
-                            color = Color.Black,
-                            fontWeight = FontWeight.Black
+                            text = if (retry.readyToRetry) "Retrying..." else "Retrying in ${retry.secondsRemaining}s",
+                            fontSize = 12.sp,
+                            color = Color(0xFF444444),
+                            modifier = Modifier.padding(top = 8.dp)
                         )
-                        Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
+                        Row(
+                            Modifier.padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            TextButton(onClick = cancelRetry) {
+                                Text("Cancel")
+                            }
+                            Button(
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(6, 64, 43, 255),
+                                    contentColor = Color.White
+                                ),
+                                onClick = { retryNow() }
+                            ) {
+                                Text("Retry now")
+                            }
+                        }
                     }
                 }
             }
