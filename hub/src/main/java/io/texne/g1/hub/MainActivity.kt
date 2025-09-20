@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import dagger.hilt.android.AndroidEntryPoint
 import io.texne.g1.hub.model.Repository
@@ -28,9 +31,13 @@ class MainActivity: ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             G1HubTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                val snackbarHostState = remember { SnackbarHostState() }
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    snackbarHost = { SnackbarHost(snackbarHostState) }
+                ) { innerPadding ->
                     Box(Modifier.padding(innerPadding).fillMaxSize()) {
-                        ApplicationFrame()
+                        ApplicationFrame(snackbarHostState)
                     }
                 }
             }

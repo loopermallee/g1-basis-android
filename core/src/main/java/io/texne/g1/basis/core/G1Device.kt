@@ -28,6 +28,7 @@ internal class G1Device(
     @SuppressLint("MissingPermission")
     val name = scanResult.device.name
     val address = scanResult.device.address
+    val rssi: Int? = scanResult.rssi.takeIf { it != 0 }
 
     // state flow ----------------------------------------------------------------------------------
 

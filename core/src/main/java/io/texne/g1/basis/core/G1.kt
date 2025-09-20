@@ -29,6 +29,7 @@ import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
 import kotlin.time.Duration
+import kotlin.math.roundToInt
 
 @OptIn(DelicateCoroutinesApi::class)
 internal fun <T1, T2, R> StateFlow<T1>.combineState(
@@ -229,6 +230,25 @@ class G1 {
         left.sendRequest(ExitRequestPacket())
         right.sendRequest(ExitRequestPacket())
         return true
+    }
+
+    fun initialAverageRssi(): Int? {
+        val values = listOfNotNull(left.rssi, right.rssi)
+        if (values.isEmpty()) {
+            return null
+        }
+        val average = values.sum().toDouble() / values.size.toDouble()
+        return average.roundToInt()
+    }
+
+    fun initialSignalStrength(): Int? = initialAverageRssi()?.let { rssi ->
+        when {
+            rssi >= -50 -> 4
+            rssi >= -60 -> 3
+            rssi >= -70 -> 2
+            rssi >= -80 -> 1
+            else -> 0
+        }
     }
 
     // find devices --------------------------------------------------------------------------------

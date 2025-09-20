@@ -30,6 +30,8 @@ import io.texne.g1.basis.service.protocol.G1ServiceState
 import io.texne.g1.basis.service.protocol.G1GestureEvent
 import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
+import io.texne.g1.basis.service.protocol.SIGNAL_STRENGTH_UNKNOWN
+import io.texne.g1.basis.service.protocol.RSSI_UNKNOWN
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -93,6 +95,8 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     glasses.rightConnectionState = this.rightConnectionState.toInt()
     glasses.leftBatteryPercentage = this.leftBatteryPercentage ?: -1
     glasses.rightBatteryPercentage = this.rightBatteryPercentage ?: -1
+    glasses.signalStrength = this.signalStrength ?: SIGNAL_STRENGTH_UNKNOWN
+    glasses.rssi = this.rssi ?: RSSI_UNKNOWN
     return glasses
 }
 
@@ -130,6 +134,8 @@ class G1Service: Service() {
         val rightConnectionState: G1.ConnectionState,
         val leftBatteryPercentage: Int?,
         val rightBatteryPercentage: Int?,
+        val signalStrength: Int?,
+        val rssi: Int?,
         val g1: G1
     )
     internal data class InternalState(
@@ -314,6 +320,8 @@ class G1Service: Service() {
                                                     rightConnectionState = glassesState.rightConnectionState,
                                                     leftBatteryPercentage = glassesState.leftBatteryPercentage,
                                                     rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                                                    signalStrength = found.initialSignalStrength(),
+                                                    rssi = found.initialAverageRssi(),
                                                     g1 = found
                                                 )
                                             )
@@ -338,6 +346,8 @@ class G1Service: Service() {
                                                                 rightConnectionState = glassesState.rightConnectionState,
                                                                 leftBatteryPercentage = glassesState.leftBatteryPercentage,
                                                                 rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                                                                signalStrength = it.value.signalStrength,
+                                                                rssi = it.value.rssi,
                                                                 g1 = it.value.g1
                                                             )
                                                         )

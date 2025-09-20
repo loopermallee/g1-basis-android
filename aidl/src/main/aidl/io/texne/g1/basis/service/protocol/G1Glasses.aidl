@@ -17,4 +17,6 @@ parcelable G1Glasses {
     int rightConnectionState;
     int leftBatteryPercentage;
     int rightBatteryPercentage;
+    int signalStrength;
+    int rssi;
 }

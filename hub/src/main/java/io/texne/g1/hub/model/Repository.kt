@@ -4,6 +4,8 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceManager
+import io.texne.g1.basis.service.protocol.RSSI_UNKNOWN
+import io.texne.g1.basis.service.protocol.SIGNAL_STRENGTH_UNKNOWN
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -33,7 +35,9 @@ class Repository @Inject constructor(
         val status: G1ServiceCommon.GlassesStatus,
         val batteryPercentage: Int,
         val left: EyeSnapshot,
-        val right: EyeSnapshot
+        val right: EyeSnapshot,
+        val signalStrength: Int?,
+        val rssi: Int?
     )
 
     data class ServiceSnapshot(
@@ -192,6 +196,8 @@ class Repository @Inject constructor(
         right = EyeSnapshot(
             status = rightStatus,
             batteryPercentage = rightBatteryPercentage
-        )
+        ),
+        signalStrength = signalStrength.takeIf { it != SIGNAL_STRENGTH_UNKNOWN },
+        rssi = rssi.takeIf { it != RSSI_UNKNOWN }
     )
 }

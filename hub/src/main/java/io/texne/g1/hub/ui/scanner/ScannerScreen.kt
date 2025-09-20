@@ -24,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -47,10 +46,12 @@ import java.util.Date
 fun ScannerScreen(
     scanning: Boolean,
     error: Boolean,
+    serviceStatus: G1ServiceCommon.ServiceStatus,
     nearbyGlasses: List<GlassesSnapshot>?,
     retryCountdowns: Map<String, ApplicationViewModel.RetryCountdown>,
     scan: () -> Unit,
     connect: (id: String) -> Unit,
+    disconnect: (id: String) -> Unit,
     cancelRetry: (id: String) -> Unit,
     retryNow: (id: String) -> Unit
 ) {
@@ -62,12 +63,17 @@ fun ScannerScreen(
         onRefresh = scan,
         state = pullToRefreshState,
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = if (
-                nearbyGlasses.isNullOrEmpty()
-            ) Arrangement.Center else Arrangement.spacedBy(32.dp)
-        ) {
+        Column(Modifier.fillMaxSize()) {
+            ServiceStatusBanner(
+                status = serviceStatus,
+                onRetry = scan
+            )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = if (
+                    nearbyGlasses.isNullOrEmpty()
+                ) Arrangement.Center else Arrangement.spacedBy(32.dp)
+            ) {
             when {
                 nearbyGlasses.isNullOrEmpty().not() -> {
                     items(nearbyGlasses!!.size) { index ->
@@ -76,6 +82,7 @@ fun ScannerScreen(
                             glasses = glasses,
                             retryCountdown = retryCountdowns[glasses.id],
                             connect = { connect(glasses.id) },
+                            disconnect = { disconnect(glasses.id) },
                             cancelRetry = { cancelRetry(glasses.id) },
                             retryNow = { retryNow(glasses.id) }
                         )
@@ -115,7 +122,79 @@ fun ScannerScreen(
                     }
                 }
             }
+            }
         }
+    }
+}
+
+@Composable
+private fun ServiceStatusBanner(
+    status: G1ServiceCommon.ServiceStatus,
+    onRetry: () -> Unit
+) {
+    when (status) {
+        G1ServiceCommon.ServiceStatus.LOOKING -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp)
+                    Text(
+                        text = "Looking for nearby glasses…",
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
+        G1ServiceCommon.ServiceStatus.ERROR -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "Could not connect to the service",
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Black
+                        )
+                        Text(
+                            text = "Check Bluetooth and try again.",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Button(
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(169, 11, 11, 255),
+                            contentColor = Color.White
+                        ),
+                        onClick = onRetry
+                    ) {
+                        Text("RETRY")
+                    }
+                }
+            }
+        }
+        else -> {}
     }
 }
 
@@ -124,15 +203,10 @@ fun GlassesItem(
     glasses: GlassesSnapshot,
     retryCountdown: ApplicationViewModel.RetryCountdown?,
     connect: () -> Unit,
+    disconnect: () -> Unit,
     cancelRetry: () -> Unit,
     retryNow: () -> Unit
 ) {
-    LaunchedEffect(retryCountdown?.secondsRemaining) {
-        if (retryCountdown?.secondsRemaining == 0) {
-            connect()
-        }
-    }
-
     Box(
         Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -212,6 +286,18 @@ fun GlassesItem(
                                             Text("RETRY NOW")
                                         }
                                     }
+                                }
+                            }
+
+                            glasses.status == G1ServiceCommon.GlassesStatus.CONNECTED -> {
+                                Button(
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(169, 11, 11, 255),
+                                        contentColor = Color.White
+                                    ),
+                                    onClick = disconnect
+                                ) {
+                                    Text("DISCONNECT")
                                 }
                             }
 
