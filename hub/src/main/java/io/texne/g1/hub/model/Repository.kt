@@ -6,21 +6,48 @@ import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceManager
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
 
 @Singleton
 class Repository @Inject constructor(
     @ApplicationContext private val applicationContext: Context
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var gestureJob: Job? = null
+    private val gestureEventsFlow = MutableSharedFlow<G1ServiceCommon.GestureEvent>(
+        replay = 0,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    fun gestureEvents(): SharedFlow<G1ServiceCommon.GestureEvent> = gestureEventsFlow.asSharedFlow()
+
     fun getServiceStateFlow() =
         service.state
 
     fun bindService(): Boolean {
         service = G1ServiceManager.open(applicationContext) ?: return false
+        gestureJob?.cancel()
+        gestureJob = scope.launch {
+            service.gestures.collect { gesture ->
+                gestureEventsFlow.emit(gesture)
+            }
+        }
         return true
     }
 
     fun unbindService() {
         if(::service.isInitialized) {
+            gestureJob?.cancel()
+            gestureJob = null
             service.close()
         }
     }

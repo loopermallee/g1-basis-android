@@ -72,11 +72,13 @@ internal fun hasFirstTwo(first: Byte, second: Byte): (ByteArray) -> Boolean = { 
 enum class IncomingPacketType(
     val label: String,
     val isType: (bytes: ByteArray) -> Boolean,
-    val factory: (bytes: ByteArray) -> (IncomingPacket?)
+    val factory: (type: IncomingPacketType, bytes: ByteArray) -> IncomingPacket?
 ) {
-    EXIT("EXIT", hasFirst(0x18), { ExitResponsePacket(it) }),
-    GLASSES_BATTERY_LEVEL("GLASSES_BATTERY_LEVEL", hasFirstTwo(0x2C, 0x66), { BatteryLevelResponsePacket(it) }),
-    AI_RESULT_RECEIVED("AI_RESULT_RECEIVED", hasFirst(0x4E), { SendTextResponsePacket(it) }),
+    EXIT("EXIT", hasFirst(0x18), { _, bytes -> ExitResponsePacket(bytes) }),
+    GLASSES_BATTERY_LEVEL("GLASSES_BATTERY_LEVEL", hasFirstTwo(0x2C, 0x66), { _, bytes -> BatteryLevelResponsePacket(bytes) }),
+    AI_RESULT_RECEIVED("AI_RESULT_RECEIVED", hasFirst(0x4E), { _, bytes -> SendTextResponsePacket(bytes) }),
+    GESTURE_TAP("GESTURE_TAP", hasFirst(0x29), { type, bytes -> GesturePacket(type, bytes, G1Gesture.Type.TAP) }),
+    GESTURE_HOLD("GESTURE_HOLD", hasFirst(0x2B), { type, bytes -> GesturePacket(type, bytes, G1Gesture.Type.HOLD) }),
 ;
     override fun toString() = label
 }
@@ -148,7 +150,9 @@ class SendTextPacket(
 abstract class IncomingPacket(val type: IncomingPacketType, val bytes: ByteArray, val responseTo: OutgoingPacketType? = null) {
     companion object {
         fun fromBytes(bytes: ByteArray): IncomingPacket? =
-            IncomingPacketType.entries.firstOrNull { it.isType(bytes) }?.factory?.invoke(bytes)
+            IncomingPacketType.entries.firstOrNull { it.isType(bytes) }?.let { type ->
+                type.factory(type, bytes)
+            }
     }
 }
 
@@ -188,3 +192,13 @@ class SendTextResponsePacket(bytes: ByteArray): IncomingPacket(
     bytes,
     OutgoingPacketType.SEND_AI_RESULT
 )
+
+// gestures
+
+class GesturePacket(
+    type: IncomingPacketType,
+    bytes: ByteArray,
+    val gestureType: G1Gesture.Type,
+): IncomingPacket(type, bytes) {
+    val timestampMillis: Long = System.currentTimeMillis()
+}

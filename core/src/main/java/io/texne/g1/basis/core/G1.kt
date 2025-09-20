@@ -8,17 +8,23 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanResult
@@ -41,6 +47,13 @@ class G1 {
 
     private val right: G1Device
     private val left: G1Device
+    private val writableGestures = MutableSharedFlow<G1Gesture>(
+        replay = 0,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val gestures = writableGestures.asSharedFlow()
+    private var gesturesJob: Job? = null
 
     // externally visible --------------------------------------------------------------------------
 
@@ -111,6 +124,13 @@ class G1 {
                 async { right.connect(context, scope) }
             )
             if (results[0] == true && results[1] == true) {
+                if(gesturesJob?.isActive != true) {
+                    gesturesJob = scope.launch {
+                        merge(left.gestures, right.gestures).collect { gesture ->
+                            writableGestures.emit(gesture)
+                        }
+                    }
+                }
                 true
             } else {
                 left.disconnect()
@@ -123,6 +143,8 @@ class G1 {
     suspend fun disconnect() {
         left.disconnect()
         right.disconnect()
+        gesturesJob?.cancel()
+        gesturesJob = null
     }
 
     // requests ------------------------------------------------------------------------------------
@@ -194,8 +216,8 @@ class G1 {
                             if(left != null && right != null) {
                                 foundPairs.remove(it.key)
                                 trySendBlocking(G1(
-                                    G1Device(right),
-                                    G1Device(left)
+                                    G1Device(right, G1Gesture.Side.RIGHT),
+                                    G1Device(left, G1Gesture.Side.LEFT)
                                 ))
                             }
                         }

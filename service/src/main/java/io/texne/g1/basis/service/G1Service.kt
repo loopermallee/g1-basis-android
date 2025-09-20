@@ -20,10 +20,12 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.nabinbhandari.android.permissions.PermissionHandler
 import com.nabinbhandari.android.permissions.Permissions
 import io.texne.g1.basis.core.G1
+import io.texne.g1.basis.core.G1Gesture
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
 import io.texne.g1.basis.service.protocol.OperationCallback
 import io.texne.g1.basis.service.protocol.G1ServiceState
+import io.texne.g1.basis.service.protocol.G1GestureEvent
 import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
@@ -56,6 +59,27 @@ private fun G1Service.ServiceStatus.toInt(): Int =
         G1Service.ServiceStatus.ERROR -> G1ServiceState.ERROR
     }
 
+private fun G1Gesture.Side.toInt(): Int =
+    when(this) {
+        G1Gesture.Side.LEFT -> G1GestureEvent.SIDE_LEFT
+        G1Gesture.Side.RIGHT -> G1GestureEvent.SIDE_RIGHT
+    }
+
+private fun G1Gesture.toTypeInt(): Int =
+    when(this) {
+        is G1Gesture.Tap -> G1GestureEvent.TYPE_TAP
+        is G1Gesture.Hold -> G1GestureEvent.TYPE_HOLD
+    }
+
+private fun G1Service.ServiceGestureEvent.toParcelable(): G1GestureEvent {
+    val event = G1GestureEvent()
+    event.sequence = sequence
+    event.timestampMillis = gesture.timestampMillis
+    event.side = gesture.side.toInt()
+    event.type = gesture.toTypeInt()
+    return event
+}
+
 private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     val glasses = G1Glasses()
     glasses.id = this.g1.id
@@ -69,6 +93,7 @@ private fun G1Service.InternalState.toState(): G1ServiceState {
     val state = G1ServiceState()
     state.status = this.status.toInt()
     state.glasses = this.glasses.values.map { it -> it.toGlasses() }.toTypedArray()
+    state.gestureEvent = this.gestureEvent?.toParcelable()
     return state
 }
 
@@ -94,9 +119,29 @@ class G1Service: Service() {
     )
     internal data class InternalState(
         val status: ServiceStatus = ServiceStatus.READY,
-        val glasses: Map<String, InternalGlasses> = mapOf()
+        val glasses: Map<String, InternalGlasses> = mapOf(),
+        val gestureEvent: ServiceGestureEvent? = null
+    )
+    internal data class ServiceGestureEvent(
+        val sequence: Int,
+        val gesture: G1Gesture
     )
     private val state = MutableStateFlow<InternalState>(InternalState())
+    private val gestureCollectors = mutableMapOf<String, Job>()
+    private var nextGestureSequence: Int = 1
+
+    private fun observeGestures(id: String, g1: G1) {
+        gestureCollectors[id]?.cancel()
+        gestureCollectors[id] = coroutineScope.launch {
+            g1.gestures.collect { gesture ->
+                val event = ServiceGestureEvent(
+                    sequence = nextGestureSequence++,
+                    gesture = gesture
+                )
+                state.value = state.value.copy(gestureEvent = event)
+            }
+        }
+    }
 
     // client-service interface --------------------------------------------------------------------
 
@@ -191,6 +236,7 @@ class G1Service: Service() {
                                         Pair(found.id, InternalGlasses(found.state.value.connectionState, found.state.value.batteryPercentage, found))
                                     )
                                 )
+                                observeGestures(found.id, found)
                                 coroutineScope.launch {
                                     found.state.collect { glassesState ->
                                         Log.d(
@@ -262,6 +308,7 @@ class G1Service: Service() {
                 if (glasses != null) {
                     coroutineScope.launch {
                         glasses.g1.disconnect()
+                        gestureCollectors.remove(id)?.cancel()
                         val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
                         dataStore.edit { settings ->
                             settings.remove(LAST_CONNECTED_ID)
@@ -381,6 +428,8 @@ class G1Service: Service() {
 
     override fun onDestroy() {
         // disconnect any connected devices
+        gestureCollectors.values.forEach { it.cancel() }
+        gestureCollectors.clear()
         coroutineScope.launch {
             state.value.glasses.values.filter { it.connectionState == G1.ConnectionState.CONNECTED }.forEach {
                 it.g1.disconnect()

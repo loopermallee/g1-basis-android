@@ -2,6 +2,7 @@
 package io.texne.g1.basis.service.protocol;
 
 import io.texne.g1.basis.service.protocol.G1Glasses;
+import io.texne.g1.basis.service.protocol.G1GestureEvent;
 
 parcelable G1ServiceState {
     const int READY = 1;
@@ -11,4 +12,5 @@ parcelable G1ServiceState {
 
     int status;
     G1Glasses[] glasses;
+    G1GestureEvent gestureEvent;
 }

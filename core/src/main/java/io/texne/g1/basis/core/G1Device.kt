@@ -4,7 +4,10 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.ble.ktx.suspend
@@ -18,7 +21,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 internal class G1Device(
-    private val scanResult: ScanResult
+    private val scanResult: ScanResult,
+    private val side: G1Gesture.Side
 ) {
 
     @SuppressLint("MissingPermission")
@@ -34,6 +38,13 @@ internal class G1Device(
 
     private val writableState = MutableStateFlow<State>(State())
     val state = writableState.asStateFlow()
+
+    private val writableGestures = MutableSharedFlow<G1Gesture>(
+        replay = 0,
+        extraBufferCapacity = 16,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val gestures = writableGestures.asSharedFlow()
 
     // manager -------------------------------------------------------------------------------------
 
@@ -62,6 +73,13 @@ internal class G1Device(
                                     batteryPercentage = packet.level
                                 )
                             }
+                        }
+                        is GesturePacket -> {
+                            val gesture = when(packet.gestureType) {
+                                G1Gesture.Type.TAP -> G1Gesture.Tap(side, packet.timestampMillis)
+                                G1Gesture.Type.HOLD -> G1Gesture.Hold(side, packet.timestampMillis)
+                            }
+                            writableGestures.emit(gesture)
                         }
                         else -> {
                             // is this the response we're expecting?
