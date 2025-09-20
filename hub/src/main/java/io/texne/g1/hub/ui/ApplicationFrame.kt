@@ -58,6 +58,9 @@ fun ApplicationFrame() {
                         scanning = state.scanning,
                         error = state.error,
                         nearbyGlasses = state.nearbyGlasses,
+                        showTroubleshooting = state.showTroubleshooting,
+                        onDismissTroubleshooting = viewModel::dismissTroubleshooting,
+                        onRequestTroubleshooting = viewModel::requestTroubleshooting,
                         scan = { viewModel.scan() },
                         connect = { viewModel.connect(it) },
                     )

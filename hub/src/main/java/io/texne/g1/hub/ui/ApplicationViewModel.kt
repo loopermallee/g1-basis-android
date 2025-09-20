@@ -28,10 +28,12 @@ class ApplicationViewModel @Inject constructor(
         val error: Boolean = false,
         val scanning: Boolean = false,
         val nearbyGlasses: List<G1ServiceCommon.Glasses>? = null,
-        val selectedSection: AppSection = AppSection.GLASSES
+        val selectedSection: AppSection = AppSection.GLASSES,
+        val showTroubleshooting: Boolean = false
     )
 
     private val selectedSection = MutableStateFlow(AppSection.GLASSES)
+    private val troubleshootingVisible = MutableStateFlow(false)
 
     private val activationEvents = MutableSharedFlow<G1ServiceCommon.GestureEvent>(
         replay = 0,
@@ -43,13 +45,14 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    val state = repository.getServiceStateFlow().combine(selectedSection) { serviceState, section ->
+    val state = combine(repository.getServiceStateFlow(), selectedSection, troubleshootingVisible) { serviceState, section, troubleshooting ->
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
             nearbyGlasses = if(serviceState == null || serviceState.status == ServiceStatus.READY) null else serviceState.glasses,
-            selectedSection = section
+            selectedSection = section,
+            showTroubleshooting = troubleshooting
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, State())
 
@@ -59,7 +62,16 @@ class ApplicationViewModel @Inject constructor(
 
     fun connect(id: String) {
         viewModelScope.launch {
-            repository.connectGlasses(id)
+            val result = runCatching {
+                repository.connectGlasses(id)
+            }.getOrElse {
+                troubleshootingVisible.value = true
+                return@launch
+            }
+
+            if(!result) {
+                troubleshootingVisible.value = true
+            }
         }
     }
 
@@ -69,6 +81,14 @@ class ApplicationViewModel @Inject constructor(
 
     fun selectSection(section: AppSection) {
         selectedSection.value = section
+    }
+
+    fun requestTroubleshooting() {
+        troubleshootingVisible.value = true
+    }
+
+    fun dismissTroubleshooting() {
+        troubleshootingVisible.value = false
     }
 
     init {
@@ -81,6 +101,17 @@ class ApplicationViewModel @Inject constructor(
                         selectedSection.value = AppSection.ASSISTANT
                     }
                 }
+            }
+        }
+
+        viewModelScope.launch {
+            var lastStatus: ServiceStatus? = null
+            repository.getServiceStateFlow().collect { serviceState ->
+                val status = serviceState?.status
+                if(status == ServiceStatus.ERROR && lastStatus != ServiceStatus.ERROR) {
+                    troubleshootingVisible.value = true
+                }
+                lastStatus = status
             }
         }
     }

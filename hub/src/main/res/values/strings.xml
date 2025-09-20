@@ -7,4 +7,20 @@
     <string name="settings_assistant_activation_option_double">Double tap</string>
     <string name="settings_assistant_activation_option_triple">Triple tap</string>
     <string name="settings_assistant_activation_option_hold">Tap and hold</string>
+    <string name="scanner_scanning_message">Scanning for nearby glasses...</string>
+    <string name="scanner_error_message">We couldn't pair with your glasses. Try again or review the tips below.</string>
+    <string name="scanner_empty_message">No glasses were found nearby.</string>
+    <string name="scanner_help_button">Need help pairing?</string>
+    <string name="scanner_troubleshooting_title">Having trouble pairing?</string>
+    <string name="scanner_troubleshooting_subtitle">Try these steps to get connected.</string>
+    <string name="scanner_troubleshooting_dismiss">Got it</string>
+    <string-array name="scanner_troubleshooting_steps">
+        <item>Make sure your glasses are turned on.</item>
+        <item>Charge the glasses for at least 10 minutes before pairing.</item>
+        <item>Enable Bluetooth on your phone and keep it nearby.</item>
+        <item>Ensure the G1 Hub app has the required permissions.</item>
+        <item>Hold the glasses power button until the status light pulses.</item>
+        <item>Restart your glasses and your phone's Bluetooth.</item>
+        <item>Run a new scan from the G1 Hub app.</item>
+    </string-array>
 </resources>
