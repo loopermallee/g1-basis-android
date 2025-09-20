@@ -193,6 +193,43 @@ class G1FindTest {
         )
     }
 
+    @Test
+    fun `bonded devices are paired immediately`() {
+        val devices = linkedSetOf(
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:40", "Even G1_7_L_zeta"),
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:41", "Even G1_7_R_zeta"),
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:42", "Even G1_7_L_eta"),
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:43", "Even G1_7_R_eta"),
+        )
+
+        val completed = G1.collectBondedPairs(devices)
+
+        assertEquals(2, completed.size)
+        val emittedNames = completed.map { pair ->
+            pair.left.device.name to pair.right.device.name
+        }.toSet()
+        val expectedNames = setOf(
+            "Even G1_7_L_zeta" to "Even G1_7_R_zeta",
+            "Even G1_7_L_eta" to "Even G1_7_R_eta",
+        )
+        assertEquals(expectedNames, emittedNames)
+    }
+
+    @Test
+    fun `bonded devices honor side filters`() {
+        val devices = linkedSetOf(
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:50", "Even G1_7_L_theta"),
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:51", "Even G1_7_R_theta"),
+        )
+
+        val completed = G1.collectBondedPairs(devices, setOf(G1Gesture.Side.RIGHT))
+
+        assertEquals(1, completed.size)
+        val pair = completed.first()
+        assertEquals("Even G1_7_L_theta", pair.left.device.name)
+        assertEquals("Even G1_7_R_theta", pair.right.device.name)
+    }
+
     private fun fakeScanResult(address: String, name: String): ScanResult {
         val device = mockk<BluetoothDevice>()
         every { device.address } returns address
@@ -200,5 +237,12 @@ class G1FindTest {
         val scanResult = mockk<ScanResult>()
         every { scanResult.device } returns device
         return scanResult
+    }
+
+    private fun fakeBluetoothDevice(address: String, name: String): BluetoothDevice {
+        val device = mockk<BluetoothDevice>()
+        every { device.address } returns address
+        every { device.name } returns name
+        return device
     }
 }
