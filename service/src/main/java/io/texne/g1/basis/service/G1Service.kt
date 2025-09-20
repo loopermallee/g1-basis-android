@@ -86,6 +86,10 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     glasses.name = this.g1.name
     glasses.connectionState = this.connectionState.toInt()
     glasses.batteryPercentage = this.batteryPercentage ?: -1
+    glasses.leftConnectionState = this.leftConnectionState.toInt()
+    glasses.rightConnectionState = this.rightConnectionState.toInt()
+    glasses.leftBatteryPercentage = this.leftBatteryPercentage ?: -1
+    glasses.rightBatteryPercentage = this.rightBatteryPercentage ?: -1
     return glasses
 }
 
@@ -115,6 +119,10 @@ class G1Service: Service() {
     internal data class InternalGlasses(
         val connectionState: G1.ConnectionState,
         val batteryPercentage: Int?,
+        val leftConnectionState: G1.ConnectionState,
+        val rightConnectionState: G1.ConnectionState,
+        val leftBatteryPercentage: Int?,
+        val rightBatteryPercentage: Int?,
         val g1: G1
     )
     internal data class InternalState(
@@ -231,9 +239,21 @@ class G1Service: Service() {
 
                             // add to glasses state if not already there
                             if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
+                                val glassesState = found.state.value
                                 state.value = state.value.copy(
                                     glasses = state.value.glasses.plus(
-                                        Pair(found.id, InternalGlasses(found.state.value.connectionState, found.state.value.batteryPercentage, found))
+                                        Pair(
+                                            found.id,
+                                            InternalGlasses(
+                                                connectionState = glassesState.connectionState,
+                                                batteryPercentage = glassesState.batteryPercentage,
+                                                leftConnectionState = glassesState.leftConnectionState,
+                                                rightConnectionState = glassesState.rightConnectionState,
+                                                leftBatteryPercentage = glassesState.leftBatteryPercentage,
+                                                rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                                                g1 = found
+                                            )
+                                        )
                                     )
                                 )
                                 observeGestures(found.id, found)
@@ -251,6 +271,10 @@ class G1Service: Service() {
                                                         it.value.copy(
                                                             connectionState = glassesState.connectionState,
                                                             batteryPercentage = glassesState.batteryPercentage,
+                                                            leftConnectionState = glassesState.leftConnectionState,
+                                                            rightConnectionState = glassesState.rightConnectionState,
+                                                            leftBatteryPercentage = glassesState.leftBatteryPercentage,
+                                                            rightBatteryPercentage = glassesState.rightBatteryPercentage,
                                                             g1 = it.value.g1
                                                         )
                                                     )

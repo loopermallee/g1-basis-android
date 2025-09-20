@@ -30,7 +30,11 @@ class RepositoryTest {
         id = "glasses-id",
         name = "Glasses",
         status = G1ServiceCommon.GlassesStatus.CONNECTED,
-        batteryPercentage = 90
+        batteryPercentage = 90,
+        leftStatus = G1ServiceCommon.GlassesStatus.CONNECTED,
+        rightStatus = G1ServiceCommon.GlassesStatus.CONNECTED,
+        leftBatteryPercentage = 90,
+        rightBatteryPercentage = 90
     )
 
     @BeforeTest

@@ -75,19 +75,40 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
                                 G1ServiceState.LOOKED -> ServiceStatus.LOOKED
                                 else -> ServiceStatus.ERROR
                             },
-                            glasses = newState.glasses.map { Glasses(
-                                id = it.id,
-                                name = it.name,
-                                status = when(it.connectionState) {
+                            glasses = newState.glasses.map { glass ->
+                                val status = when(glass.connectionState) {
                                     G1Glasses.UNINITIALIZED -> GlassesStatus.UNINITIALIZED
                                     G1Glasses.DISCONNECTED -> GlassesStatus.DISCONNECTED
                                     G1Glasses.CONNECTING -> GlassesStatus.CONNECTING
                                     G1Glasses.CONNECTED -> GlassesStatus.CONNECTED
                                     G1Glasses.DISCONNECTING -> GlassesStatus.DISCONNECTING
                                     else -> GlassesStatus.ERROR
-                                },
-                                batteryPercentage = it.batteryPercentage
-                            ) }
+                                }
+                                Glasses(
+                                    id = glass.id,
+                                    name = glass.name,
+                                    status = status,
+                                    batteryPercentage = glass.batteryPercentage,
+                                    leftStatus = when(glass.leftConnectionState) {
+                                        G1Glasses.UNINITIALIZED -> GlassesStatus.UNINITIALIZED
+                                        G1Glasses.DISCONNECTED -> GlassesStatus.DISCONNECTED
+                                        G1Glasses.CONNECTING -> GlassesStatus.CONNECTING
+                                        G1Glasses.CONNECTED -> GlassesStatus.CONNECTED
+                                        G1Glasses.DISCONNECTING -> GlassesStatus.DISCONNECTING
+                                        else -> GlassesStatus.ERROR
+                                    },
+                                    rightStatus = when(glass.rightConnectionState) {
+                                        G1Glasses.UNINITIALIZED -> GlassesStatus.UNINITIALIZED
+                                        G1Glasses.DISCONNECTED -> GlassesStatus.DISCONNECTED
+                                        G1Glasses.CONNECTING -> GlassesStatus.CONNECTING
+                                        G1Glasses.CONNECTED -> GlassesStatus.CONNECTED
+                                        G1Glasses.DISCONNECTING -> GlassesStatus.DISCONNECTING
+                                        else -> GlassesStatus.ERROR
+                                    },
+                                    leftBatteryPercentage = glass.leftBatteryPercentage,
+                                    rightBatteryPercentage = glass.rightBatteryPercentage
+                                )
+                            }
                         )
                     }
                 }
