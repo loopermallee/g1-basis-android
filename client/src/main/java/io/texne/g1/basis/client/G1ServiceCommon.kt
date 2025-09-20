@@ -27,7 +27,11 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         val id: String,
         val name: String,
         val status: GlassesStatus,
-        val batteryPercentage: Int
+        val batteryPercentage: Int,
+        val leftStatus: GlassesStatus,
+        val rightStatus: GlassesStatus,
+        val leftBatteryPercentage: Int,
+        val rightBatteryPercentage: Int
     )
 
     enum class ServiceStatus { READY, LOOKING, LOOKED, ERROR }

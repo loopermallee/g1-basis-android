@@ -63,7 +63,11 @@ class G1 {
     enum class ConnectionState { UNINITIALIZED, DISCONNECTED, CONNECTING, CONNECTED, DISCONNECTING, ERROR }
     data class State(
         val connectionState: ConnectionState,
-        val batteryPercentage: Int?
+        val batteryPercentage: Int?,
+        val leftConnectionState: ConnectionState,
+        val rightConnectionState: ConnectionState,
+        val leftBatteryPercentage: Int?,
+        val rightBatteryPercentage: Int?
     )
     val state: StateFlow<State>
     private var currentState: State? = null
@@ -76,7 +80,7 @@ class G1 {
         this.name = "${splitL[0]}.${splitL[1]}"
         this.right = right
         this.left = left
-        this.state = right.state.combineState(left.state) { l, r ->
+        this.state = left.state.combineState(right.state) { l, r ->
             val lConnectionState = l.connectionState
             val rConnectionState = r.connectionState
             val connectionState = when {
@@ -90,21 +94,31 @@ class G1 {
                 else -> ConnectionState.UNINITIALIZED
             }
 
-            val batteryPercentage = if(l.batteryPercentage == null || r.batteryPercentage == null) null else l.batteryPercentage.coerceAtMost(
-                r.batteryPercentage
+            val leftBatteryPercentage = l.batteryPercentage
+            val rightBatteryPercentage = r.batteryPercentage
+            val batteryPercentage = if(leftBatteryPercentage == null || rightBatteryPercentage == null) null else leftBatteryPercentage.coerceAtMost(
+                rightBatteryPercentage
             )
 
             val current = currentState
             if(
                 current != null &&
                 connectionState == current.connectionState &&
-                batteryPercentage == current.batteryPercentage
+                batteryPercentage == current.batteryPercentage &&
+                lConnectionState == current.leftConnectionState &&
+                rConnectionState == current.rightConnectionState &&
+                leftBatteryPercentage == current.leftBatteryPercentage &&
+                rightBatteryPercentage == current.rightBatteryPercentage
             ) {
                 current
             } else {
                 val newState = State(
                     connectionState = connectionState,
-                    batteryPercentage = batteryPercentage
+                    batteryPercentage = batteryPercentage,
+                    leftConnectionState = lConnectionState,
+                    rightConnectionState = rConnectionState,
+                    leftBatteryPercentage = leftBatteryPercentage,
+                    rightBatteryPercentage = rightBatteryPercentage
                 )
                 Log.d("G1", "G1_STATE - composing - ${l} and ${r} = ${newState}")
                 currentState = newState

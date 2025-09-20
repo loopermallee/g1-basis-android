@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceCommon.ServiceStatus
 import io.texne.g1.hub.model.Repository
+import io.texne.g1.hub.model.Repository.GlassesSnapshot
 import io.texne.g1.hub.preferences.AssistantPreferences
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -24,10 +25,10 @@ class ApplicationViewModel @Inject constructor(
 ): ViewModel() {
 
     data class State(
-        val connectedGlasses: G1ServiceCommon.Glasses? = null,
+        val connectedGlasses: GlassesSnapshot? = null,
         val error: Boolean = false,
         val scanning: Boolean = false,
-        val nearbyGlasses: List<G1ServiceCommon.Glasses>? = null,
+        val nearbyGlasses: List<GlassesSnapshot>? = null,
         val selectedSection: AppSection = AppSection.GLASSES
     )
 

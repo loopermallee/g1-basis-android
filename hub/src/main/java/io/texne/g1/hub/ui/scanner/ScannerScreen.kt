@@ -1,4 +1,9 @@
-import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -6,7 +11,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,8 +24,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -29,13 +35,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.R
+import io.texne.g1.hub.model.Repository.GlassesSnapshot
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScannerScreen(
     scanning: Boolean,
     error: Boolean,
-    nearbyGlasses: List<G1ServiceCommon.Glasses>?,
+    nearbyGlasses: List<GlassesSnapshot>?,
     scan: () -> Unit,
     connect: (id: String) -> Unit
 ) {
@@ -55,10 +62,11 @@ fun ScannerScreen(
         ) {
             when {
                 nearbyGlasses.isNullOrEmpty().not() -> {
-                    items(nearbyGlasses!!.size) {
+                    items(nearbyGlasses!!.size) { index ->
+                        val glasses = nearbyGlasses[index]
                         GlassesItem(
-                            nearbyGlasses[it],
-                            { connect(nearbyGlasses[it].id) }
+                            glasses,
+                            { connect(glasses.id) }
                         )
                     }
                 }
@@ -100,10 +108,9 @@ fun ScannerScreen(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun GlassesItem(
-    glasses: G1ServiceCommon.Glasses,
+    glasses: GlassesSnapshot,
     connect: () -> Unit
 ) {
     Box(
@@ -118,10 +125,12 @@ fun GlassesItem(
                 Modifier
                     .fillMaxWidth()
                     .aspectRatio(2.5f)
-                    .padding(16.dp)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    Modifier.fillMaxWidth().weight(1f)
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.weight(1f)) {
                         Image(
@@ -132,7 +141,7 @@ fun GlassesItem(
                         )
                     }
                     Box(
-                        Modifier.weight(1f).fillMaxHeight().padding(8.dp),
+                        Modifier.weight(1f).padding(8.dp),
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         when {
@@ -159,24 +168,108 @@ fun GlassesItem(
                         }
                     }
                 }
-                Row(
-                    Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom
+                Column(
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy((-8).dp)
-                    ) {
+                    Text(
+                        text = glasses.name,
+                        fontSize = 24.sp,
+                        color = Color.Black,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
+                }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    EyeStatusRow(
+                        label = "Left temple",
+                        status = glasses.left.status,
+                        batteryPercentage = glasses.left.batteryPercentage
+                    )
+                    EyeStatusRow(
+                        label = "Right temple",
+                        status = glasses.right.status,
+                        batteryPercentage = glasses.right.batteryPercentage
+                    )
+                    Crossfade(targetState = glasses.status to glasses.batteryPercentage, label = "overallStatus") { (status, battery) ->
                         Text(
-                            text = glasses.name,
-                            fontSize = 24.sp,
-                            color = Color.Black,
-                            fontWeight = FontWeight.Black
+                            text = "Overall • ${statusLabel(status)} • ${batteryLabel(battery)}",
+                            fontSize = 12.sp,
+                            color = Color.Gray
                         )
-                        Text(glasses.id, fontSize = 10.sp, color = Color.Gray)
                     }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun EyeStatusRow(
+    label: String,
+    status: G1ServiceCommon.GlassesStatus,
+    batteryPercentage: Int
+) {
+    val pulsing = status == G1ServiceCommon.GlassesStatus.CONNECTING || status == G1ServiceCommon.GlassesStatus.DISCONNECTING
+    val alpha = if (pulsing) {
+        val transition = rememberInfiniteTransition(label = "scannerStatusPulse")
+        val value by transition.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = { it }),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+        value
+    } else {
+        1f
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Crossfade(targetState = status, label = "statusIcon") { targetStatus ->
+            Text(
+                text = statusIcon(targetStatus),
+                fontSize = 24.sp,
+                modifier = Modifier.alpha(alpha)
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Color.Black)
+            Crossfade(targetState = status to batteryPercentage, label = "statusText") { (targetStatus, targetBattery) ->
+                Text(
+                    text = "${statusLabel(targetStatus)} • ${batteryLabel(targetBattery)}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+        }
+    }
+}
+
+private fun statusIcon(status: G1ServiceCommon.GlassesStatus) = when (status) {
+    G1ServiceCommon.GlassesStatus.CONNECTED -> "✅"
+    G1ServiceCommon.GlassesStatus.CONNECTING,
+    G1ServiceCommon.GlassesStatus.DISCONNECTING -> "🔄"
+    else -> "❌"
+}
+
+private fun statusLabel(status: G1ServiceCommon.GlassesStatus) = when (status) {
+    G1ServiceCommon.GlassesStatus.UNINITIALIZED -> "Waiting"
+    G1ServiceCommon.GlassesStatus.DISCONNECTED -> "Disconnected"
+    G1ServiceCommon.GlassesStatus.CONNECTING -> "Connecting"
+    G1ServiceCommon.GlassesStatus.CONNECTED -> "Connected"
+    G1ServiceCommon.GlassesStatus.DISCONNECTING -> "Disconnecting"
+    G1ServiceCommon.GlassesStatus.ERROR -> "Error"
+}
+
+private fun batteryLabel(battery: Int) = if (battery >= 0) "$battery%" else "—"
 
