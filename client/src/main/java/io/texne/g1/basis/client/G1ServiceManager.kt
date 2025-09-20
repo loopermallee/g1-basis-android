@@ -139,7 +139,7 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
         service?.disconnectGlasses(id, null)
     }
 
-    override suspend fun displayTextPage(id: String, page: List<String>) =
+    override suspend fun sendTextPage(id: String, page: List<String>) =
         suspendCoroutine<Boolean> { continuation ->
             service?.displayTextPage(
                 id,

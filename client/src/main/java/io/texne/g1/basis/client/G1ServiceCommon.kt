@@ -9,13 +9,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.Closeable
-import kotlin.collections.any
-import kotlin.collections.forEach
-import kotlin.collections.map
-import kotlin.collections.plus
-import kotlin.text.repeat
 
-const val SPACE_FILL_MULTIPLIER = 2
+const val MAX_LINES_PER_PAGE = 5
+const val MAX_CHARACTERS_PER_LINE = 40
 
 abstract class G1ServiceCommon<ServiceInterface> constructor(
     private val context: Context
@@ -131,40 +127,17 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
     }
 
     suspend fun displayFormattedPage(id: String, formattedPage: FormattedPage): Boolean {
-        if(formattedPage.lines.size > 5 || formattedPage.lines.any { it.text.length > 40 }) {
+        if(!isValidFormattedPage(formattedPage)) {
             return false
         }
-        val renderedLines = formattedPage.lines.map {
-            when(it.justify) {
-                JustifyLine.LEFT -> it.text
-                JustifyLine.CENTER -> " ".repeat((SPACE_FILL_MULTIPLIER*(40 - it.text.length)/2).toInt()).plus(it.text)
-                JustifyLine.RIGHT -> " ".repeat((SPACE_FILL_MULTIPLIER*(40 - it.text.length)).toInt()).plus(it.text)
-            }
+
+        val horizontallyAligned = formattedPage.lines.map(::renderLine)
+        val renderedPage = verticallyAlignLines(horizontallyAligned, formattedPage.justify)
+
+        if(!renderedPage.isValidPage()) {
+            return false
         }
-        val renderedPage: List<String> = when(formattedPage.lines.size) {
-            5 -> renderedLines
-            4 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus("")
-                JustifyPage.BOTTOM -> listOf("").plus(renderedLines)
-                JustifyPage.CENTER -> renderedLines.plus("")
-            }
-            3 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(listOf("", ""))
-                JustifyPage.BOTTOM -> listOf("", "").plus(renderedLines)
-                JustifyPage.CENTER -> listOf("").plus(renderedLines).plus("")
-            }
-            2 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(listOf("", "", ""))
-                JustifyPage.BOTTOM -> listOf("", "", "").plus(renderedLines)
-                JustifyPage.CENTER -> listOf("").plus(renderedLines).plus(listOf("", ""))
-            }
-            1 -> when(formattedPage.justify) {
-                JustifyPage.TOP -> renderedLines.plus(listOf("", "", "", ""))
-                JustifyPage.BOTTOM -> listOf("", "", "", "").plus(renderedLines)
-                JustifyPage.CENTER -> listOf("", "").plus(renderedLines).plus(listOf("", ""))
-            }
-            else -> listOf("", "", "", "", "")
-        }
+
         return displayTextPage(id, renderedPage)
     }
 
@@ -176,6 +149,55 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         return stopDisplaying(id)
     }
 
-    abstract suspend fun displayTextPage (id: String, page: List<String>): Boolean
+    suspend fun displayTextPage(id: String, page: List<String>): Boolean {
+        if(!page.isValidPage()) {
+            return false
+        }
+        return sendTextPage(id, page)
+    }
+
+    abstract suspend fun sendTextPage(id: String, page: List<String>): Boolean
     abstract suspend fun stopDisplaying(id: String):  Boolean
+
+    private fun isValidFormattedPage(formattedPage: FormattedPage): Boolean =
+        formattedPage.lines.size <= MAX_LINES_PER_PAGE &&
+            formattedPage.lines.all { it.text.length <= MAX_CHARACTERS_PER_LINE }
+
+    private fun renderLine(line: FormattedLine): String {
+        val text = line.text
+        val remaining = (MAX_CHARACTERS_PER_LINE - text.length).coerceAtLeast(0)
+        return when(line.justify) {
+            JustifyLine.LEFT -> text
+            JustifyLine.RIGHT -> " ".repeat(remaining) + text
+            JustifyLine.CENTER -> {
+                val leftPadding = remaining / 2
+                val rightPadding = remaining - leftPadding
+                " ".repeat(leftPadding) + text + " ".repeat(rightPadding)
+            }
+        }
+    }
+
+    private fun verticallyAlignLines(lines: List<String>, justifyPage: JustifyPage): List<String> {
+        if(lines.size >= MAX_LINES_PER_PAGE) {
+            return lines.take(MAX_LINES_PER_PAGE)
+        }
+
+        val paddingNeeded = MAX_LINES_PER_PAGE - lines.size
+        val (topPadding, bottomPadding) = when(justifyPage) {
+            JustifyPage.TOP -> 0 to paddingNeeded
+            JustifyPage.BOTTOM -> paddingNeeded to 0
+            JustifyPage.CENTER -> {
+                val top = paddingNeeded / 2
+                val bottom = paddingNeeded - top
+                top to bottom
+            }
+        }
+
+        val top = List(topPadding) { "" }
+        val bottom = List(bottomPadding) { "" }
+        return top + lines + bottom
+    }
+
+    private fun List<String>.isValidPage(): Boolean =
+        size <= MAX_LINES_PER_PAGE && all { it.length <= MAX_CHARACTERS_PER_LINE }
 }
