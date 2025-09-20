@@ -37,14 +37,34 @@ class ApplicationViewModel @Inject constructor(
         val connectedGlasses: GlassesSnapshot? = null,
         val error: Boolean = false,
         val scanning: Boolean = false,
+        val serviceStatus: ServiceStatus = ServiceStatus.READY,
         val nearbyGlasses: List<GlassesSnapshot>? = null,
         val selectedSection: AppSection = AppSection.GLASSES,
-        val retryCountdowns: Map<String, RetryCountdown> = emptyMap()
+        val retryCountdowns: Map<String, RetryCountdown> = emptyMap(),
+        val telemetryEntries: List<TelemetryEntry> = emptyList()
     )
+
+    data class TelemetryEntry(
+        val id: String,
+        val name: String,
+        val status: G1ServiceCommon.GlassesStatus,
+        val signalStrength: Int?,
+        val rssi: Int?,
+        val retryCount: Int
+    )
+
+    sealed class UiMessage {
+        data class AutoConnectTriggered(val glassesName: String) : UiMessage()
+        data class AutoConnectFailed(val glassesName: String) : UiMessage()
+    }
+
+    private enum class AttemptType { MANUAL, AUTO }
 
     private data class AttemptState(
         var lastStatus: G1ServiceCommon.GlassesStatus? = null,
-        var hasAttemptStarted: Boolean = false
+        var hasAttemptStarted: Boolean = false,
+        var lastAttemptType: AttemptType? = null,
+        var retryCount: Int = 0
     )
 
     private val selectedSection = MutableStateFlow(AppSection.GLASSES)
@@ -52,6 +72,16 @@ class ApplicationViewModel @Inject constructor(
     private val retryCountdowns = MutableStateFlow<Map<String, RetryCountdown>>(emptyMap())
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
+    private val retryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+
+    private val messages = MutableSharedFlow<UiMessage>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    val uiMessages = messages.asSharedFlow()
+    private var latestServiceSnapshot: Repository.ServiceSnapshot? = null
 
     private val activationEvents = MutableSharedFlow<G1ServiceCommon.GestureEvent>(
         replay = 0,
@@ -66,15 +96,27 @@ class ApplicationViewModel @Inject constructor(
     val state = combine(
         repository.getServiceStateFlow(),
         selectedSection,
-        retryCountdowns
-    ) { serviceState, section, retries ->
+        retryCountdowns,
+        retryCounts
+    ) { serviceState, section, retries, retryStats ->
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
+            serviceStatus = serviceState?.status ?: ServiceStatus.READY,
             nearbyGlasses = if (serviceState == null || serviceState.status == ServiceStatus.READY) null else serviceState.glasses,
             selectedSection = section,
-            retryCountdowns = retries
+            retryCountdowns = retries,
+            telemetryEntries = serviceState?.glasses?.map { glasses ->
+                TelemetryEntry(
+                    id = glasses.id,
+                    name = glasses.name,
+                    status = glasses.status,
+                    signalStrength = glasses.signalStrength,
+                    rssi = glasses.rssi,
+                    retryCount = retryStats[glasses.id] ?: 0
+                )
+            } ?: emptyList()
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, State())
 
@@ -83,9 +125,12 @@ class ApplicationViewModel @Inject constructor(
     }
 
     fun connect(id: String) {
-        val attempt = connectionAttempts[id] ?: AttemptState()
+        val attempt = connectionAttempts.getOrPut(id) { AttemptState() }
         attempt.hasAttemptStarted = false
+        attempt.lastAttemptType = AttemptType.MANUAL
+        attempt.retryCount = 0
         connectionAttempts[id] = attempt
+        updateRetryCount(id, attempt.retryCount)
         clearRetryCountdown(id, removeRequest = false)
         viewModelScope.launch {
             repository.connectGlasses(id)
@@ -110,22 +155,75 @@ class ApplicationViewModel @Inject constructor(
         selectedSection.value = section
     }
 
+    private fun glassesName(id: String): String =
+        latestServiceSnapshot?.glasses?.firstOrNull { it.id == id }?.name ?: id
+
+    private fun notify(message: UiMessage) {
+        viewModelScope.launch {
+            messages.emit(message)
+        }
+    }
+
+    private fun updateRetryCount(id: String, count: Int) {
+        retryCounts.update { current ->
+            current.toMutableMap().apply { this[id] = count }
+        }
+    }
+
+    private fun removeRetryCount(id: String) {
+        retryCounts.update { current ->
+            if (current.containsKey(id)) {
+                current.toMutableMap().apply { remove(id) }
+            } else {
+                current
+            }
+        }
+    }
+
+    private fun startAutoReconnect(id: String) {
+        val attempt = connectionAttempts.getOrPut(id) { AttemptState() }
+        attempt.hasAttemptStarted = false
+        attempt.lastAttemptType = AttemptType.AUTO
+        attempt.retryCount += 1
+        connectionAttempts[id] = attempt
+        updateRetryCount(id, attempt.retryCount)
+        val name = glassesName(id)
+        notify(UiMessage.AutoConnectTriggered(name))
+        viewModelScope.launch {
+            repository.connectGlasses(id)
+        }
+    }
+
     init {
         viewModelScope.launch {
             repository.getServiceStateFlow().collect { serviceState ->
+                latestServiceSnapshot = serviceState
                 val glasses = serviceState?.glasses.orEmpty()
                 val availableIds = glasses.map { it.id }.toSet()
                 val inactiveIds = connectionAttempts.keys.filterNot { availableIds.contains(it) }
                 inactiveIds.forEach { id ->
                     clearRetryCountdown(id, removeRequest = true)
+                    removeRetryCount(id)
                 }
                 glasses.forEach { snapshot ->
                     val id = snapshot.id
-                    val attempt = connectionAttempts[id] ?: return@forEach
+                    val attempt = connectionAttempts[id]
+                    if (attempt == null) {
+                        if (!retryCounts.value.containsKey(id)) {
+                            updateRetryCount(id, 0)
+                        }
+                        return@forEach
+                    }
+                    if (!retryCounts.value.containsKey(id)) {
+                        updateRetryCount(id, attempt.retryCount)
+                    }
                     val previousStatus = attempt.lastStatus
                     attempt.lastStatus = snapshot.status
                     when (snapshot.status) {
-                        G1ServiceCommon.GlassesStatus.CONNECTED -> clearRetryCountdown(id, removeRequest = true)
+                        G1ServiceCommon.GlassesStatus.CONNECTED -> {
+                            attempt.lastAttemptType = null
+                            clearRetryCountdown(id, removeRequest = true)
+                        }
                         G1ServiceCommon.GlassesStatus.CONNECTING,
                         G1ServiceCommon.GlassesStatus.DISCONNECTING -> {
                             attempt.hasAttemptStarted = true
@@ -133,6 +231,10 @@ class ApplicationViewModel @Inject constructor(
                         }
                         G1ServiceCommon.GlassesStatus.ERROR -> {
                             attempt.hasAttemptStarted = true
+                            if (attempt.lastAttemptType == AttemptType.AUTO) {
+                                notify(UiMessage.AutoConnectFailed(snapshot.name))
+                                attempt.lastAttemptType = null
+                            }
                             scheduleRetry(id)
                         }
                         G1ServiceCommon.GlassesStatus.DISCONNECTED -> {
@@ -142,6 +244,10 @@ class ApplicationViewModel @Inject constructor(
                                 previousStatus == G1ServiceCommon.GlassesStatus.DISCONNECTING ||
                                 previousStatus == G1ServiceCommon.GlassesStatus.CONNECTED
                             ) {
+                                if (attempt.lastAttemptType == AttemptType.AUTO) {
+                                    notify(UiMessage.AutoConnectFailed(snapshot.name))
+                                    attempt.lastAttemptType = null
+                                }
                                 scheduleRetry(id)
                             }
                         }
@@ -182,16 +288,15 @@ class ApplicationViewModel @Inject constructor(
             while (isActive && remaining > 0 && connectionAttempts.containsKey(id)) {
                 delay(1_000L)
                 if (!connectionAttempts.containsKey(id)) {
-                    break
+                    retryCountdowns.update { current ->
+                        current.toMutableMap().apply { remove(id) }
+                    }
+                    return@launch
                 }
                 remaining -= 1
                 retryCountdowns.update { current ->
-                    if (!connectionAttempts.containsKey(id)) {
-                        current.toMutableMap().apply { remove(id) }
-                    } else {
-                        current.toMutableMap().apply {
-                            this[id] = RetryCountdown(remaining, nextAttemptAt)
-                        }
+                    current.toMutableMap().apply {
+                        this[id] = RetryCountdown(remaining, nextAttemptAt)
                     }
                 }
             }
@@ -202,10 +307,10 @@ class ApplicationViewModel @Inject constructor(
                 return@launch
             }
             retryCountdowns.update { current ->
-                current.toMutableMap().apply {
-                    this[id] = RetryCountdown(0, nextAttemptAt)
-                }
+                current.toMutableMap().apply { remove(id) }
             }
+            retryJobs.remove(id)
+            startAutoReconnect(id)
         }
         job.invokeOnCompletion {
             retryJobs.remove(id)

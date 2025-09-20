@@ -51,6 +51,36 @@ class G1FindTest {
     }
 
     @Test
+    fun `pairs without suffix fallback to address for identifiers`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+
+        val results = listOf(
+            fakeScanResult("AA:BB:CC:DD:10:01", "Even G1_7_L"),
+            fakeScanResult("AA:BB:CC:DD:10:02", "Even G1_7_R"),
+            fakeScanResult("AA:BB:CC:DD:10:03", "Even G1_7_L"),
+            fakeScanResult("AA:BB:CC:DD:10:04", "Even G1_7_R"),
+        )
+
+        val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
+
+        assertEquals("Expected two completed pairs", 2, completed.size)
+        assertTrue("No partial pairs should remain", foundPairs.isEmpty())
+
+        val identifiers = completed.map { it.identifier }.toSet()
+        assertEquals("Pairs should have unique identifiers", 2, identifiers.size)
+        assertEquals(
+            listOf(
+                "AA:BB:CC:DD:10:01",
+                "AA:BB:CC:DD:10:02",
+                "AA:BB:CC:DD:10:03",
+                "AA:BB:CC:DD:10:04",
+            ),
+            foundAddresses
+        )
+    }
+
+    @Test
     fun `devices with different suffixes remain partial`() {
         val foundAddresses = mutableListOf<String>()
         val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()

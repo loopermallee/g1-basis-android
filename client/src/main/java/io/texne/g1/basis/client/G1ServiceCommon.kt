@@ -2,6 +2,8 @@ package io.texne.g1.basis.client
 
 import android.content.Context
 import android.content.ServiceConnection
+import io.texne.g1.basis.service.protocol.RSSI_UNKNOWN
+import io.texne.g1.basis.service.protocol.SIGNAL_STRENGTH_UNKNOWN
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -27,7 +29,9 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         val leftStatus: GlassesStatus,
         val rightStatus: GlassesStatus,
         val leftBatteryPercentage: Int,
-        val rightBatteryPercentage: Int
+        val rightBatteryPercentage: Int,
+        val signalStrength: Int = SIGNAL_STRENGTH_UNKNOWN,
+        val rssi: Int = RSSI_UNKNOWN
     )
 
     enum class ServiceStatus { READY, LOOKING, LOOKED, ERROR }

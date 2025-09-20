@@ -84,7 +84,9 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
                                         else -> GlassesStatus.ERROR
                                     },
                                     leftBatteryPercentage = glass.leftBatteryPercentage,
-                                    rightBatteryPercentage = glass.rightBatteryPercentage
+                                    rightBatteryPercentage = glass.rightBatteryPercentage,
+                                    signalStrength = glass.signalStrength,
+                                    rssi = glass.rssi
                                 )
                             }
                         )

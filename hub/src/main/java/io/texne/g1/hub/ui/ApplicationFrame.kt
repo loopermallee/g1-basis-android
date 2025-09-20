@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -29,12 +31,25 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.hub.ui.chat.ChatScreen
 import io.texne.g1.hub.ui.settings.SettingsScreen
+import io.texne.g1.hub.ui.telemetry.TelemetryScreen
 
 @Composable
-fun ApplicationFrame() {
+fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
     val viewModel = hiltViewModel<ApplicationViewModel>()
     val state by viewModel.state.collectAsState()
     val selectedSection = state.selectedSection
+
+    LaunchedEffect(viewModel) {
+        viewModel.uiMessages.collect { message ->
+            val text = when (message) {
+                is ApplicationViewModel.UiMessage.AutoConnectTriggered ->
+                    "Auto-connecting to ${message.glassesName}"
+                is ApplicationViewModel.UiMessage.AutoConnectFailed ->
+                    "Auto-connect failed for ${message.glassesName}"
+            }
+            snackbarHostState.showSnackbar(text)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -57,14 +72,22 @@ fun ApplicationFrame() {
                     ScannerScreen(
                         scanning = state.scanning,
                         error = state.error,
+                        serviceStatus = state.serviceStatus,
                         nearbyGlasses = state.nearbyGlasses,
                         retryCountdowns = state.retryCountdowns,
                         scan = { viewModel.scan() },
                         connect = { viewModel.connect(it) },
+                        disconnect = { viewModel.disconnect(it) },
                         cancelRetry = { viewModel.cancelAutoRetry(it) },
                         retryNow = { viewModel.retryNow(it) }
                     )
                 }
+            }
+            AppSection.TELEMETRY -> {
+                TelemetryScreen(
+                    entries = state.telemetryEntries,
+                    onDisconnect = viewModel::disconnect
+                )
             }
             AppSection.ASSISTANT -> {
                 ChatScreen(
@@ -129,6 +152,7 @@ fun Header(
 
 enum class AppSection(val label: String) {
     GLASSES("Glasses"),
+    TELEMETRY("Telemetry"),
     ASSISTANT("Assistant"),
     SETTINGS("Settings")
 }
