@@ -58,8 +58,11 @@ fun ApplicationFrame() {
                         scanning = state.scanning,
                         error = state.error,
                         nearbyGlasses = state.nearbyGlasses,
+                        retryCountdowns = state.retryCountdowns,
                         scan = { viewModel.scan() },
                         connect = { viewModel.connect(it) },
+                        cancelRetry = { viewModel.cancelAutoRetry(it) },
+                        retryNow = { viewModel.retryNow(it) }
                     )
                 }
             }
