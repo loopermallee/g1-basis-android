@@ -15,7 +15,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +39,8 @@ internal fun <T1, T2, R> StateFlow<T1>.combineState(
 ): StateFlow<R> = this.combine(flow2) {
         o1, o2 -> transform.invoke(o1, o2)
 }.stateIn(scope, sharingStarted, transform.invoke(this.value, flow2.value))
+
+private const val MAX_CONNECTION_ATTEMPTS = 3
 
 class G1 {
 
@@ -129,15 +130,25 @@ class G1 {
 
     // connect / disconnect ------------------------------------------------------------------------
 
-    suspend fun connect(context: Context, scope: CoroutineScope) = coroutineScope<Boolean> {
+    suspend fun connect(
+        context: Context,
+        scope: CoroutineScope,
+        maxAttempts: Int = MAX_CONNECTION_ATTEMPTS
+    ) = coroutineScope<Boolean> {
         if(state.value.connectionState == ConnectionState.CONNECTED) {
-            true
-        } else {
+            return@coroutineScope true
+        }
+
+        var attempt = 1
+        while (attempt <= maxAttempts) {
             val results = awaitAll(
                 async { left.connect(context, scope) },
                 async { right.connect(context, scope) }
             )
-            if (results[0] == true && results[1] == true) {
+
+            val leftResult = results.getOrNull(0) == true
+            val rightResult = results.getOrNull(1) == true
+            if (leftResult && rightResult) {
                 if(gesturesJob?.isActive != true) {
                     gesturesJob = scope.launch {
                         merge(left.gestures, right.gestures).collect { gesture ->
@@ -145,13 +156,41 @@ class G1 {
                         }
                     }
                 }
-                true
-            } else {
-                left.disconnect()
-                right.disconnect()
-                false
+                return@coroutineScope true
             }
+
+            Log.w(
+                "G1",
+                "Connection attempt $attempt failed for $name (left=$leftResult, right=$rightResult)"
+            )
+
+            awaitAll(
+                async {
+                    try {
+                        left.disconnect()
+                    } catch (error: Throwable) {
+                        Log.w("G1", "Left disconnect cleanup failed for $name", error)
+                    }
+                },
+                async {
+                    try {
+                        right.disconnect()
+                    } catch (error: Throwable) {
+                        Log.w("G1", "Right disconnect cleanup failed for $name", error)
+                    }
+                }
+            )
+
+            if(attempt < maxAttempts) {
+                Log.i(
+                    "G1",
+                    "Retrying connection for $name (${attempt + 1} of $maxAttempts)"
+                )
+            }
+            attempt += 1
         }
+
+        false
     }
 
     suspend fun disconnect() {
