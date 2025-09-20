@@ -1,6 +1,8 @@
 package io.texne.g1.basis.core
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -254,20 +256,27 @@ class G1 {
     // find devices --------------------------------------------------------------------------------
 
     companion object {
+        internal data class DeviceCandidate(
+            val device: BluetoothDevice,
+            val identifier: String,
+            val side: G1Gesture.Side,
+            val rssi: Int?
+        )
+
         internal data class FoundPair(
-            val left: ScanResult? = null,
-            val right: ScanResult? = null
+            val left: DeviceCandidate? = null,
+            val right: DeviceCandidate? = null
         )
 
         internal data class G1DevicePair(
             val identifier: String,
-            val left: ScanResult,
-            val right: ScanResult
+            val left: DeviceCandidate,
+            val right: DeviceCandidate
         )
 
-        private fun pairingIdentifier(result: ScanResult): String? {
-            val name = result.device.name ?: return null
-            val segments = name.split("_")
+        private fun pairingIdentifier(name: String?, address: String): String? {
+            val value = name ?: return null
+            val segments = value.split("_")
             val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
             if (sideIndex == -1) {
                 return null
@@ -279,7 +288,7 @@ class G1 {
             val identifierSuffix = if (suffixSegments.isNotEmpty()) {
                 suffixSegments.joinToString("_")
             } else {
-                result.device.address.replace(":", "").takeLast(6)
+                address.replace(":", "").takeLast(6)
             }
 
             if (identifierSuffix.isEmpty()) {
@@ -290,18 +299,84 @@ class G1 {
         }
 
         private fun String.hasSideToken(side: String): Boolean =
-            this.split("_").any { it == side }
+            split("_").any { it == side }
 
-        private fun ScanResult.isLeftDevice(): Boolean =
-            this.device.name?.hasSideToken("L") == true
-
-        private fun ScanResult.isRightDevice(): Boolean =
-            this.device.name?.hasSideToken("R") == true
-
-        private fun ScanResult.side(): G1Gesture.Side? = when {
-            isLeftDevice() -> G1Gesture.Side.LEFT
-            isRightDevice() -> G1Gesture.Side.RIGHT
+        private fun sideFromName(name: String?): G1Gesture.Side? = when {
+            name?.hasSideToken("L") == true -> G1Gesture.Side.LEFT
+            name?.hasSideToken("R") == true -> G1Gesture.Side.RIGHT
             else -> null
+        }
+
+        private fun candidateFromScanResult(result: ScanResult): DeviceCandidate? {
+            val device = result.device
+            val name = device.name ?: return null
+            if (!name.startsWith(DEVICE_NAME_PREFIX)) {
+                return null
+            }
+            val identifier = pairingIdentifier(name, device.address) ?: return null
+            val side = sideFromName(name) ?: return null
+            val rssi = result.rssi.takeIf { it != 0 }
+            return DeviceCandidate(device, identifier, side, rssi)
+        }
+
+        @SuppressLint("MissingPermission")
+        private fun candidateFromDevice(device: BluetoothDevice): DeviceCandidate? {
+            val name = device.name ?: return null
+            if (!name.startsWith(DEVICE_NAME_PREFIX)) {
+                return null
+            }
+            val identifier = pairingIdentifier(name, device.address) ?: return null
+            val side = sideFromName(name) ?: return null
+            return DeviceCandidate(device, identifier, side, null)
+        }
+
+        @SuppressLint("MissingPermission")
+        internal fun collectBondedPairs(
+            devices: Set<BluetoothDevice>,
+            sideFilter: Set<G1Gesture.Side>? = null
+        ): List<G1DevicePair> {
+            if (devices.isEmpty()) {
+                return emptyList()
+            }
+
+            val trackedIdentifiers = mutableSetOf<String>()
+            val partialPairs = mutableMapOf<String, FoundPair>()
+            val completedPairs = mutableListOf<G1DevicePair>()
+
+            devices.forEach { device ->
+                val candidate = candidateFromDevice(device) ?: return@forEach
+                val identifier = candidate.identifier
+                val existing = partialPairs[identifier]
+                val resolvedLeft = when {
+                    candidate.side == G1Gesture.Side.LEFT -> candidate
+                    else -> existing?.left
+                }
+                val resolvedRight = when {
+                    candidate.side == G1Gesture.Side.RIGHT -> candidate
+                    else -> existing?.right
+                }
+
+                if (sideFilter != null && identifier !in trackedIdentifiers) {
+                    if (sideFilter.contains(candidate.side)) {
+                        trackedIdentifiers.add(identifier)
+                    } else {
+                        partialPairs[identifier] = FoundPair(resolvedLeft, resolvedRight)
+                        return@forEach
+                    }
+                } else {
+                    trackedIdentifiers.add(identifier)
+                }
+
+                if (resolvedLeft != null && resolvedRight != null) {
+                    partialPairs.remove(identifier)
+                    trackedIdentifiers.remove(identifier)
+                    completedPairs.add(G1DevicePair(identifier, resolvedLeft, resolvedRight))
+                } else {
+                    partialPairs[identifier] = FoundPair(resolvedLeft, resolvedRight)
+                }
+            }
+
+            return completedPairs
         }
 
         internal fun collectCompletePairs(
@@ -317,21 +392,19 @@ class G1 {
             rawResults
                 .asSequence()
                 .filterNotNull()
-                .forEach { result ->
-                    val name = result.device.name ?: return@forEach
-                    val address = result.device.address
-                    if (!name.startsWith(DEVICE_NAME_PREFIX)) {
-                        return@forEach
-                    }
+                .mapNotNull { result ->
+                    val candidate = candidateFromScanResult(result) ?: return@mapNotNull null
+                    val address = candidate.device.address
                     if (!seenAddresses.add(address) || foundAddresses.contains(address)) {
-                        return@forEach
+                        return@mapNotNull null
                     }
-
-                    val identifier = pairingIdentifier(result) ?: return@forEach
-                    val side = result.side() ?: return@forEach
+                    Pair(candidate, address)
+                }
+                .forEach { (candidate, address) ->
+                    val identifier = candidate.identifier
 
                     if (sideFilter != null && identifier !in trackedIdentifiers) {
-                        if (sideFilter.contains(side)) {
+                        if (sideFilter.contains(candidate.side)) {
                             trackedIdentifiers.add(identifier)
                         } else {
                             return@forEach
@@ -344,11 +417,11 @@ class G1 {
 
                     val existing = foundPairs[identifier]
                     val resolvedLeft = when {
-                        result.isLeftDevice() -> result
+                        candidate.side == G1Gesture.Side.LEFT -> candidate
                         else -> existing?.left
                     }
                     val resolvedRight = when {
-                        result.isRightDevice() -> result
+                        candidate.side == G1Gesture.Side.RIGHT -> candidate
                         else -> existing?.right
                     }
 
@@ -376,15 +449,34 @@ class G1 {
                 .build()
             val foundAddresses = mutableListOf<String>()
             val foundPairs = mutableMapOf<String, FoundPair>()
+
+            collectBondedPairs(
+                BluetoothAdapter.getDefaultAdapter()?.bondedDevices ?: emptySet(),
+                sideFilter
+            ).forEach { pair ->
+                listOf(pair.left.device.address, pair.right.device.address)
+                    .forEach { address ->
+                        if (!foundAddresses.contains(address)) {
+                            foundAddresses.add(address)
+                        }
+                    }
+                trySendBlocking(
+                    G1(
+                        G1Device(pair.right.device, G1Gesture.Side.RIGHT, pair.right.rssi),
+                        G1Device(pair.left.device, G1Gesture.Side.LEFT, pair.left.rssi)
+                    )
+                )
+            }
+
             fun handleResults(results: List<ScanResult?>) {
                 collectCompletePairs(results, foundAddresses, foundPairs, sideFilter)
                     .forEach { pair ->
-                        val left = pair.left
-                        val right = pair.right
-                        trySendBlocking(G1(
-                            G1Device(right, G1Gesture.Side.RIGHT),
-                            G1Device(left, G1Gesture.Side.LEFT)
-                        ))
+                        trySendBlocking(
+                            G1(
+                                G1Device(pair.right.device, G1Gesture.Side.RIGHT, pair.right.rssi),
+                                G1Device(pair.left.device, G1Gesture.Side.LEFT, pair.left.rssi)
+                            )
+                        )
                     }
             }
 

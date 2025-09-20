@@ -1,6 +1,7 @@
 package io.texne.g1.basis.core
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -11,7 +12,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.ble.ktx.suspend
-import no.nordicsemi.android.support.v18.scanner.ScanResult
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -21,14 +21,15 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 internal class G1Device(
-    private val scanResult: ScanResult,
-    private val side: G1Gesture.Side
+    private val device: BluetoothDevice,
+    private val side: G1Gesture.Side,
+    private val initialRssi: Int? = null
 ) {
 
     @SuppressLint("MissingPermission")
-    val name = scanResult.device.name
-    val address = scanResult.device.address
-    val rssi: Int? = scanResult.rssi.takeIf { it != 0 }
+    val name = device.name
+    val address = device.address
+    val rssi: Int? = initialRssi
 
     // state flow ----------------------------------------------------------------------------------
 
@@ -56,10 +57,11 @@ internal class G1Device(
     @SuppressLint("MissingPermission")
     suspend fun connect(context: Context, scope: CoroutineScope): Boolean {
         if(this::manager.isInitialized.not()) {
-            manager = G1BLEManager(scanResult.device.name, context, scope)
+            val deviceName = device.name ?: device.address
+            manager = G1BLEManager(deviceName, context, scope)
             scope.launch {
                 manager.connectionState.collect {
-                    Log.d("G1Device", "CONNECTION_STATUS ${scanResult.device.name} = ${it}")
+                    Log.d("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
                     writableState.value = state.value.copy(
                         connectionState = it
                     )
@@ -98,7 +100,7 @@ internal class G1Device(
             }
         }
         try {
-            manager.connect(scanResult.device)
+            manager.connect(device)
                 .useAutoConnect(true)
                 .retry(3)
                 .timeout(30_000)
