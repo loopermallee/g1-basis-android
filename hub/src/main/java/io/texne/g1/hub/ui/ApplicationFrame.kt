@@ -56,7 +56,7 @@ fun ApplicationFrame() {
                 } else {
                     ScannerScreen(
                         scanning = state.scanning,
-                        error = state.error,
+                        scannerPrompt = state.scannerPrompt,
                         nearbyGlasses = state.nearbyGlasses,
                         scan = { viewModel.scan() },
                         connect = { viewModel.connect(it) },

@@ -24,17 +24,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.R
+import io.texne.g1.hub.ui.ScannerPrompt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScannerScreen(
     scanning: Boolean,
-    error: Boolean,
+    scannerPrompt: ScannerPrompt?,
     nearbyGlasses: List<G1ServiceCommon.Glasses>?,
     scan: () -> Unit,
     connect: (id: String) -> Unit
@@ -69,18 +71,24 @@ fun ScannerScreen(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Scanning for nearby glasses...")
+                            Text(stringResource(id = R.string.scanner_status_scanning))
                         }
                     }
                 }
 
-                error -> {
+                scannerPrompt != null -> {
                     item {
                         Box(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("An error ocurred. Please try again.")
+                            val message = when (scannerPrompt) {
+                                ScannerPrompt.GlassesSideIssue ->
+                                    stringResource(id = R.string.scanner_error_glasses)
+                                ScannerPrompt.HubSideIssue ->
+                                    stringResource(id = R.string.scanner_error_hub)
+                            }
+                            Text(message)
                         }
                     }
                 }
@@ -91,7 +99,7 @@ fun ScannerScreen(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("No glasses were found nearby.")
+                            Text(stringResource(id = R.string.scanner_status_none_found))
                         }
                     }
                 }

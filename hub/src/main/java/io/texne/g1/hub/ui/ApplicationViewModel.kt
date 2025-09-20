@@ -17,6 +17,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+sealed interface ScannerPrompt {
+    object HubSideIssue : ScannerPrompt
+    object GlassesSideIssue : ScannerPrompt
+}
+
 @HiltViewModel
 class ApplicationViewModel @Inject constructor(
     private val repository: Repository,
@@ -25,9 +30,9 @@ class ApplicationViewModel @Inject constructor(
 
     data class State(
         val connectedGlasses: G1ServiceCommon.Glasses? = null,
-        val error: Boolean = false,
         val scanning: Boolean = false,
         val nearbyGlasses: List<G1ServiceCommon.Glasses>? = null,
+        val scannerPrompt: ScannerPrompt? = null,
         val selectedSection: AppSection = AppSection.GLASSES
     )
 
@@ -44,11 +49,18 @@ class ApplicationViewModel @Inject constructor(
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
     val state = repository.getServiceStateFlow().combine(selectedSection) { serviceState, section ->
+        val scannerPrompt = when {
+            serviceState?.status == ServiceStatus.ERROR -> ScannerPrompt.HubSideIssue
+            serviceState?.glasses?.any { it.status == G1ServiceCommon.GlassesStatus.ERROR } == true ->
+                ScannerPrompt.GlassesSideIssue
+            else -> null
+        }
+
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
-            error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
             nearbyGlasses = if(serviceState == null || serviceState.status == ServiceStatus.READY) null else serviceState.glasses,
+            scannerPrompt = scannerPrompt,
             selectedSection = section
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, State())

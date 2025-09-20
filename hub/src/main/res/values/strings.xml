@@ -7,4 +7,8 @@
     <string name="settings_assistant_activation_option_double">Double tap</string>
     <string name="settings_assistant_activation_option_triple">Triple tap</string>
     <string name="settings_assistant_activation_option_hold">Tap and hold</string>
+    <string name="scanner_status_scanning">Scanning for nearby glasses…</string>
+    <string name="scanner_status_none_found">No glasses were found nearby.</string>
+    <string name="scanner_error_glasses">We couldn&#39;t reach your glasses. Power cycle them, move closer, then start another scan.</string>
+    <string name="scanner_error_hub">We couldn&#39;t start a scan from the hub. Toggle Bluetooth or restart the app before scanning again.</string>
 </resources>
