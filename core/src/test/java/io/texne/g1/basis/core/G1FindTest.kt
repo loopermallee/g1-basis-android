@@ -28,8 +28,8 @@ class G1FindTest {
         assertTrue("No partial pairs should remain", foundPairs.isEmpty())
 
         val emittedNames = completed.map { pair ->
-            val leftName = pair.left?.device?.name
-            val rightName = pair.right?.device?.name
+            val leftName = pair.left.device.name
+            val rightName = pair.right.device.name
             leftName to rightName
         }.toSet()
 
@@ -50,7 +50,7 @@ class G1FindTest {
     }
 
     @Test
-    fun `asymmetric suffix pairs normalize to same key`() {
+    fun `devices with different suffixes remain partial`() {
         val foundAddresses = mutableListOf<String>()
         val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
 
@@ -63,15 +63,19 @@ class G1FindTest {
 
         val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
 
-        assertEquals("Expected one completed pair", 1, completed.size)
-        val pair = completed.single()
-        assertEquals("Even G1_7_L_CEOCDF", pair.left?.device?.name)
-        assertEquals("Even G1_7_R_1D7162", pair.right?.device?.name)
+        assertTrue("No completed pairs should be emitted", completed.isEmpty())
 
         assertEquals(
-            setOf("Even G1_7_unpaired", "Even G1_7_different"),
+            setOf(
+                "Even G1_7_CEOCDF",
+                "Even G1_7_1D7162",
+                "Even G1_7_unpaired",
+                "Even G1_7_different",
+            ),
             foundPairs.keys
         )
+        assertEquals("Even G1_7_L_CEOCDF", foundPairs["Even G1_7_CEOCDF"]?.left?.device?.name)
+        assertEquals("Even G1_7_R_1D7162", foundPairs["Even G1_7_1D7162"]?.right?.device?.name)
         assertEquals("Even G1_7_L_unpaired", foundPairs["Even G1_7_unpaired"]?.left?.device?.name)
         assertEquals("Even G1_7_R_different", foundPairs["Even G1_7_different"]?.right?.device?.name)
 

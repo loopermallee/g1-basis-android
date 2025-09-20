@@ -200,34 +200,34 @@ class G1 {
             val right: ScanResult? = null
         )
 
-        private val SUFFIX_NORMALIZATION_MAP = listOf(
-            setOf("CEOCDF", "1D7162")
-        ).flatMap { group ->
-            if (group.isEmpty()) {
-                emptyList()
-            } else {
-                val canonical = group.sorted().first()
-                group.map { suffix -> suffix to canonical }
-            }
-        }.toMap()
+        internal data class G1DevicePair(
+            val identifier: String,
+            val left: ScanResult,
+            val right: ScanResult
+        )
 
-        private fun normalizeSuffix(segment: String): String =
-            SUFFIX_NORMALIZATION_MAP[segment] ?: segment
-
-        private fun pairingToken(name: String): String {
+        private fun pairingIdentifier(result: ScanResult): String? {
+            val name = result.device.name ?: return null
             val segments = name.split("_")
             val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
             if (sideIndex == -1) {
-                return name
+                return null
             }
-            val normalized = segments.mapIndexedNotNull { index, segment ->
-                when {
-                    index == sideIndex -> null
-                    index > sideIndex -> normalizeSuffix(segment)
-                    else -> segment
-                }
+
+            val prefixSegments = segments.take(sideIndex)
+            val suffixSegments = segments.drop(sideIndex + 1)
+
+            val identifierSuffix = if (suffixSegments.isNotEmpty()) {
+                suffixSegments.joinToString("_")
+            } else {
+                result.device.address.replace(":", "").takeLast(6)
             }
-            return if (normalized.isEmpty()) name else normalized.joinToString("_")
+
+            if (identifierSuffix.isEmpty()) {
+                return null
+            }
+
+            return (prefixSegments + identifierSuffix).joinToString("_")
         }
 
         private fun String.hasSideToken(side: String): Boolean =
@@ -243,37 +243,37 @@ class G1 {
             rawResults: List<ScanResult?>,
             foundAddresses: MutableList<String>,
             foundPairs: MutableMap<String, FoundPair>
-        ): List<FoundPair> {
-            val completedPairs = mutableListOf<FoundPair>()
+        ): List<G1DevicePair> {
+            val completedPairs = mutableListOf<G1DevicePair>()
             rawResults
+                .asSequence()
+                .filterNotNull()
                 .filter { result ->
-                    result != null &&
-                        result.device.name != null &&
-                        result.device.name.startsWith(DEVICE_NAME_PREFIX) &&
+                    result.device.name?.startsWith(DEVICE_NAME_PREFIX) == true &&
                         foundAddresses.contains(result.device.address).not()
                 }
-                .distinctBy { result -> result!!.device.address }
-                .groupBy { result ->
-                    val nonNullResult = result!!
-                    pairingToken(nonNullResult.device.name!!)
+                .mapNotNull { result ->
+                    val identifier = pairingIdentifier(result) ?: return@mapNotNull null
+                    identifier to result
                 }
-                .forEach { (key, grouped) ->
+                .distinctBy { (_, result) -> result.device.address }
+                .groupBy({ (identifier, _) -> identifier }, { (_, result) -> result })
+                .forEach { (identifier, grouped) ->
                     grouped.forEach { found ->
-                        val nonNullFound = found ?: return@forEach
-                        foundAddresses.add(nonNullFound.device.address)
+                        foundAddresses.add(found.device.address)
                     }
 
-                    val existing = foundPairs[key]
-                    val candidateLeft = grouped.firstOrNull { it?.isLeftDevice() == true }
-                    val candidateRight = grouped.firstOrNull { it?.isRightDevice() == true }
+                    val existing = foundPairs[identifier]
+                    val candidateLeft = grouped.firstOrNull { it.isLeftDevice() }
+                    val candidateRight = grouped.firstOrNull { it.isRightDevice() }
                     val resolvedLeft = existing?.left ?: candidateLeft
                     val resolvedRight = existing?.right ?: candidateRight
 
                     if (resolvedLeft != null && resolvedRight != null) {
-                        foundPairs.remove(key)
-                        completedPairs.add(FoundPair(resolvedLeft, resolvedRight))
+                        foundPairs.remove(identifier)
+                        completedPairs.add(G1DevicePair(identifier, resolvedLeft, resolvedRight))
                     } else if (resolvedLeft != null || resolvedRight != null) {
-                        foundPairs[key] = FoundPair(resolvedLeft, resolvedRight)
+                        foundPairs[identifier] = FoundPair(resolvedLeft, resolvedRight)
                     }
                 }
 
@@ -295,8 +295,8 @@ class G1 {
                 override fun onBatchScanResults(results: List<ScanResult?>) {
                     collectCompletePairs(results, foundAddresses, foundPairs)
                         .forEach { pair ->
-                            val left = pair.left ?: return@forEach
-                            val right = pair.right ?: return@forEach
+                            val left = pair.left
+                            val right = pair.right
                             trySendBlocking(G1(
                                 G1Device(right, G1Gesture.Side.RIGHT),
                                 G1Device(left, G1Gesture.Side.LEFT)
