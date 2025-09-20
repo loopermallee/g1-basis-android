@@ -136,7 +136,56 @@ class G1Service: Service() {
     )
     private val state = MutableStateFlow<InternalState>(InternalState())
     private val gestureCollectors = mutableMapOf<String, Job>()
+    private val forcedDisconnectJobs = mutableMapOf<String, Job>()
     private var nextGestureSequence: Int = 1
+    private val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
+    @Volatile
+    private var cachedLastConnectedId: String? = null
+
+    private suspend fun readLastConnectedId(): String? {
+        val cached = cachedLastConnectedId
+        if (cached != null) {
+            return cached
+        }
+        val stored = dataStore.data.map { preferences -> preferences[LAST_CONNECTED_ID] }.first()
+        cachedLastConnectedId = stored
+        return stored
+    }
+
+    private suspend fun persistLastConnectedId(id: String?) {
+        dataStore.edit { settings ->
+            if (id == null) {
+                settings.remove(LAST_CONNECTED_ID)
+            } else {
+                settings[LAST_CONNECTED_ID] = id
+            }
+        }
+        cachedLastConnectedId = id
+    }
+
+    private fun ensureFullyDisconnected(id: String, g1: G1, glassesState: G1.State) {
+        val leftState = glassesState.leftConnectionState
+        val rightState = glassesState.rightConnectionState
+        val leftConnected = leftState == G1.ConnectionState.CONNECTED
+        val rightConnected = rightState == G1.ConnectionState.CONNECTED
+        val leftTerminated = leftState == G1.ConnectionState.DISCONNECTED || leftState == G1.ConnectionState.ERROR
+        val rightTerminated = rightState == G1.ConnectionState.DISCONNECTED || rightState == G1.ConnectionState.ERROR
+
+        val halfConnected = (leftConnected && rightTerminated) || (rightConnected && leftTerminated)
+        if (!halfConnected || forcedDisconnectJobs.containsKey(id)) {
+            return
+        }
+
+        Log.w("G1Service", "Half-connected state detected for $id. Forcing full disconnect.")
+        forcedDisconnectJobs[id] = coroutineScope.launch {
+            try {
+                g1.disconnect()
+            } finally {
+                gestureCollectors.remove(id)?.cancel()
+                forcedDisconnectJobs.remove(id)
+            }
+        }
+    }
 
     private fun observeGestures(id: String, g1: G1) {
         gestureCollectors[id]?.cancel()
@@ -223,82 +272,86 @@ class G1Service: Service() {
                     )
 
                     // make sure last connected id makes sense, fix if it doesn't for some reason
-                    val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
-                    var lastConnectedId = dataStore.data.map { preferences -> preferences[LAST_CONNECTED_ID] }.first()
+                    var lastConnectedId = readLastConnectedId()
                     val connectedId = state.value.glasses.values.find { it.connectionState == G1.ConnectionState.CONNECTED }?.g1?.id
                     if(connectedId != null && lastConnectedId != connectedId) {
-                        dataStore.edit { settings ->
-                            settings[LAST_CONNECTED_ID] = connectedId
-                        }
+                        persistLastConnectedId(connectedId)
                         lastConnectedId = connectedId
                     }
 
-                    G1.find(15.toDuration(DurationUnit.SECONDS)).collect { found ->
-                        if(found != null) {
-                            Log.d("G1Service", "SCANNING FOUND = ${found}")
+                    try {
+                        G1.find(15.toDuration(DurationUnit.SECONDS)).collect { found ->
+                            if(found != null) {
+                                Log.d("G1Service", "SCANNING FOUND = ${found}")
 
-                            // add to glasses state if not already there
-                            if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
-                                val glassesState = found.state.value
-                                state.value = state.value.copy(
-                                    glasses = state.value.glasses.plus(
-                                        Pair(
-                                            found.id,
-                                            InternalGlasses(
-                                                connectionState = glassesState.connectionState,
-                                                batteryPercentage = glassesState.batteryPercentage,
-                                                leftConnectionState = glassesState.leftConnectionState,
-                                                rightConnectionState = glassesState.rightConnectionState,
-                                                leftBatteryPercentage = glassesState.leftBatteryPercentage,
-                                                rightBatteryPercentage = glassesState.rightBatteryPercentage,
-                                                g1 = found
+                                // add to glasses state if not already there
+                                if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
+                                    val glassesState = found.state.value
+                                    state.value = state.value.copy(
+                                        glasses = state.value.glasses.plus(
+                                            Pair(
+                                                found.id,
+                                                InternalGlasses(
+                                                    connectionState = glassesState.connectionState,
+                                                    batteryPercentage = glassesState.batteryPercentage,
+                                                    leftConnectionState = glassesState.leftConnectionState,
+                                                    rightConnectionState = glassesState.rightConnectionState,
+                                                    leftBatteryPercentage = glassesState.leftBatteryPercentage,
+                                                    rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                                                    g1 = found
+                                                )
                                             )
                                         )
                                     )
-                                )
-                                observeGestures(found.id, found)
-                                coroutineScope.launch {
-                                    found.state.collect { glassesState ->
-                                        Log.d(
-                                            "G1Service",
-                                            "GLASSES_STATE ${found.name} (${found.id}) = ${glassesState}"
-                                        )
-                                        state.value =
-                                            state.value.copy(glasses = state.value.glasses.entries.associate {
-                                                if (it.key == found.id) {
-                                                    Pair(
-                                                        it.key,
-                                                        it.value.copy(
-                                                            connectionState = glassesState.connectionState,
-                                                            batteryPercentage = glassesState.batteryPercentage,
-                                                            leftConnectionState = glassesState.leftConnectionState,
-                                                            rightConnectionState = glassesState.rightConnectionState,
-                                                            leftBatteryPercentage = glassesState.leftBatteryPercentage,
-                                                            rightBatteryPercentage = glassesState.rightBatteryPercentage,
-                                                            g1 = it.value.g1
+                                    observeGestures(found.id, found)
+                                    coroutineScope.launch {
+                                        found.state.collect { glassesState ->
+                                            Log.d(
+                                                "G1Service",
+                                                "GLASSES_STATE ${found.name} (${found.id}) = ${glassesState}"
+                                            )
+                                            state.value =
+                                                state.value.copy(glasses = state.value.glasses.entries.associate {
+                                                    if (it.key == found.id) {
+                                                        Pair(
+                                                            it.key,
+                                                            it.value.copy(
+                                                                connectionState = glassesState.connectionState,
+                                                                batteryPercentage = glassesState.batteryPercentage,
+                                                                leftConnectionState = glassesState.leftConnectionState,
+                                                                rightConnectionState = glassesState.rightConnectionState,
+                                                                leftBatteryPercentage = glassesState.leftBatteryPercentage,
+                                                                rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                                                                g1 = it.value.g1
+                                                            )
                                                         )
-                                                    )
-                                                } else {
-                                                    Pair(
-                                                        it.key,
-                                                        it.value
-                                                    )
-                                                }
-                                            })
+                                                    } else {
+                                                        Pair(
+                                                            it.key,
+                                                            it.value
+                                                        )
+                                                    }
+                                                })
+                                            ensureFullyDisconnected(found.id, found, glassesState)
+                                        }
+                                    }
+
+                                    // if this is the pair we were connected to before, reconnect
+                                    if(lastConnectedId == found.id) {
+                                        connectGlasses(found.id, null)
+                                        lastConnectedId = found.id
                                     }
                                 }
-
-                                // if this is the pair we were connected to before, reconnect
-                                if(lastConnectedId == found.id) {
-                                    connectGlasses(found.id, null)
-                                }
+                            } else {
+                                state.value = state.value.copy(
+                                    status = ServiceStatus.LOOKED,
+                                    glasses = state.value.glasses,
+                                )
                             }
-                        } else {
-                            state.value = state.value.copy(
-                                status = ServiceStatus.LOOKED,
-                                glasses = state.value.glasses,
-                            )
                         }
+                    } catch (e: Throwable) {
+                        Log.e("G1Service", "Error while scanning for glasses", e)
+                        state.value = state.value.copy(status = ServiceStatus.ERROR)
                     }
                 }
             }
@@ -309,12 +362,10 @@ class G1Service: Service() {
                 val glasses = state.value.glasses.get(id)
                 if (glasses != null) {
                     coroutineScope.launch {
+                        forcedDisconnectJobs.remove(id)?.cancel()
                         val result = glasses.g1.connect(this@G1Service, coroutineScope)
                         if(result == true) {
-                            val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
-                            dataStore.edit { settings ->
-                                settings[LAST_CONNECTED_ID] = id
-                            }
+                            persistLastConnectedId(id)
                         }
                         callback?.onResult(result)
                     }
@@ -331,11 +382,11 @@ class G1Service: Service() {
                 val glasses = state.value.glasses.get(id)
                 if (glasses != null) {
                     coroutineScope.launch {
+                        forcedDisconnectJobs.remove(id)?.cancel()
                         glasses.g1.disconnect()
                         gestureCollectors.remove(id)?.cancel()
-                        val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
-                        dataStore.edit { settings ->
-                            settings.remove(LAST_CONNECTED_ID)
+                        if(cachedLastConnectedId == id) {
+                            persistLastConnectedId(null)
                         }
                         callback?.onResult(true)
                     }
@@ -459,6 +510,6 @@ class G1Service: Service() {
                 it.g1.disconnect()
             }
         }
-        onDestroy()
+        super.onDestroy()
     }
 }
