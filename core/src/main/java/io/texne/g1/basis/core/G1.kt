@@ -447,13 +447,19 @@ class G1 {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setReportDelay(0)
                 .build()
+            val handler = Handler(Looper.getMainLooper())
             val foundAddresses = mutableListOf<String>()
             val foundPairs = mutableMapOf<String, FoundPair>()
 
-            collectBondedPairs(
-                BluetoothAdapter.getDefaultAdapter()?.bondedDevices ?: emptySet(),
-                sideFilter
-            ).forEach { pair ->
+            val bondedDevices = try {
+                BluetoothAdapter.getDefaultAdapter()?.bondedDevices ?: emptySet()
+            } catch (error: SecurityException) {
+                Log.w("G1", "Unable to access bonded devices", error)
+                emptySet()
+            }
+
+            val bondedPairs = collectBondedPairs(bondedDevices, sideFilter)
+            bondedPairs.forEach { pair ->
                 listOf(pair.left.device.address, pair.right.device.address)
                     .forEach { address ->
                         if (!foundAddresses.contains(address)) {
@@ -468,36 +474,69 @@ class G1 {
                 )
             }
 
-            fun handleResults(results: List<ScanResult?>) {
-                collectCompletePairs(results, foundAddresses, foundPairs, sideFilter)
-                    .forEach { pair ->
-                        trySendBlocking(
-                            G1(
-                                G1Device(pair.right.device, G1Gesture.Side.RIGHT, pair.right.rssi),
-                                G1Device(pair.left.device, G1Gesture.Side.LEFT, pair.left.rssi)
+            var scanCallback: ScanCallback? = null
+            var stopScanRunnable: Runnable? = null
+            var scanStarted = false
+
+            if (bondedPairs.isEmpty()) {
+                fun handleResults(results: List<ScanResult?>) {
+                    collectCompletePairs(results, foundAddresses, foundPairs, sideFilter)
+                        .forEach { pair ->
+                            trySendBlocking(
+                                G1(
+                                    G1Device(pair.right.device, G1Gesture.Side.RIGHT, pair.right.rssi),
+                                    G1Device(pair.left.device, G1Gesture.Side.LEFT, pair.left.rssi)
+                                )
                             )
-                        )
+                        }
+                }
+
+                val callback = object : ScanCallback() {
+                    @SuppressLint("MissingPermission")
+                    override fun onScanResult(callbackType: Int, result: ScanResult) {
+                        handleResults(listOf(result))
                     }
-            }
 
-            val callback = object: ScanCallback() {
-                @SuppressLint("MissingPermission")
-                override fun onScanResult(callbackType: Int, result: ScanResult) {
-                    handleResults(listOf(result))
+                    @SuppressLint("MissingPermission")
+                    override fun onBatchScanResults(results: List<ScanResult?>) {
+                        handleResults(results)
+                    }
+                }
+                scanCallback = callback
+
+                try {
+                    scanner.startScan(emptyList(), settings, callback)
+                    scanStarted = true
+                } catch (error: SecurityException) {
+                    Log.w("G1", "Unable to start BLE scan", error)
+                    trySendBlocking(null)
+                    close()
+                } catch (error: IllegalStateException) {
+                    Log.w("G1", "Unable to start BLE scan", error)
+                    trySendBlocking(null)
+                    close()
                 }
 
-                @SuppressLint("MissingPermission")
-                override fun onBatchScanResults(results: List<ScanResult?>) {
-                    handleResults(results)
+                if (scanStarted) {
+                    stopScanRunnable = Runnable {
+                        runCatching { scanner.stopScan(callback) }
+                        trySendBlocking(null)
+                    }
+                    handler.postDelayed(stopScanRunnable!!, duration.inWholeMilliseconds)
                 }
-            }
-            scanner.startScan(emptyList(), settings, callback)
-            Handler(Looper.getMainLooper()).postDelayed({
-                scanner.stopScan(callback)
+            } else {
                 trySendBlocking(null)
-            }, duration.inWholeMilliseconds)
+                close()
+                scanCallback = null
+            }
+
             awaitClose {
-                scanner.stopScan(callback)
+                stopScanRunnable?.let { handler.removeCallbacks(it) }
+                if (scanStarted) {
+                    scanCallback?.let { callback ->
+                        runCatching { scanner.stopScan(callback) }
+                    }
+                }
             }
         }
     }
