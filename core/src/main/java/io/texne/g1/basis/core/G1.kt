@@ -1,6 +1,7 @@
 package io.texne.g1.basis.core
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -265,9 +266,9 @@ class G1 {
             val right: ScanResult
         )
 
-        private fun pairingIdentifier(result: ScanResult): String? {
-            val name = result.device.name ?: return null
-            val segments = name.split("_")
+        private fun pairingIdentifier(name: String?, address: String): String? {
+            val deviceName = name ?: return null
+            val segments = deviceName.split("_")
             val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
             if (sideIndex == -1) {
                 return null
@@ -279,7 +280,7 @@ class G1 {
             val identifierSuffix = if (suffixSegments.isNotEmpty()) {
                 suffixSegments.joinToString("_")
             } else {
-                result.device.address.replace(":", "").takeLast(6)
+                address.replace(":", "").takeLast(6)
             }
 
             if (identifierSuffix.isEmpty()) {
@@ -289,16 +290,28 @@ class G1 {
             return (prefixSegments + identifierSuffix).joinToString("_")
         }
 
-        private fun String.hasSideToken(side: String): Boolean =
-            this.split("_").any { it == side }
+        private fun String?.hasSideToken(side: String): Boolean =
+            this?.split("_")?.any { it == side } == true
 
         private fun ScanResult.isLeftDevice(): Boolean =
-            this.device.name?.hasSideToken("L") == true
+            this.device.name.hasSideToken("L")
 
         private fun ScanResult.isRightDevice(): Boolean =
-            this.device.name?.hasSideToken("R") == true
+            this.device.name.hasSideToken("R")
 
         private fun ScanResult.side(): G1Gesture.Side? = when {
+            isLeftDevice() -> G1Gesture.Side.LEFT
+            isRightDevice() -> G1Gesture.Side.RIGHT
+            else -> null
+        }
+
+        private fun BluetoothDevice.isLeftDevice(): Boolean =
+            this.name.hasSideToken("L")
+
+        private fun BluetoothDevice.isRightDevice(): Boolean =
+            this.name.hasSideToken("R")
+
+        private fun BluetoothDevice.side(): G1Gesture.Side? = when {
             isLeftDevice() -> G1Gesture.Side.LEFT
             isRightDevice() -> G1Gesture.Side.RIGHT
             else -> null
@@ -327,7 +340,8 @@ class G1 {
                         return@forEach
                     }
 
-                    val identifier = pairingIdentifier(result) ?: return@forEach
+                    val identifier = pairingIdentifier(result.device.name, result.device.address)
+                        ?: return@forEach
                     val side = result.side() ?: return@forEach
 
                     if (sideFilter != null && identifier !in trackedIdentifiers) {
@@ -364,6 +378,43 @@ class G1 {
             return completedPairs
         }
 
+        fun fromBondedDevices(
+            first: BluetoothDevice,
+            second: BluetoothDevice
+        ): G1? {
+            val firstSide = first.side()
+            val secondSide = second.side()
+            if (firstSide == null || secondSide == null) {
+                return null
+            }
+
+            val (leftDevice, rightDevice) = when {
+                firstSide == G1Gesture.Side.LEFT && secondSide == G1Gesture.Side.RIGHT ->
+                    Pair(first, second)
+                firstSide == G1Gesture.Side.RIGHT && secondSide == G1Gesture.Side.LEFT ->
+                    Pair(second, first)
+                else -> return null
+            }
+
+            if (
+                leftDevice.name.isNullOrEmpty() ||
+                rightDevice.name.isNullOrEmpty()
+            ) {
+                return null
+            }
+            if (
+                !leftDevice.name!!.startsWith(DEVICE_NAME_PREFIX) ||
+                !rightDevice.name!!.startsWith(DEVICE_NAME_PREFIX)
+            ) {
+                return null
+            }
+
+            return G1(
+                G1Device.fromBluetoothDevice(rightDevice, G1Gesture.Side.RIGHT),
+                G1Device.fromBluetoothDevice(leftDevice, G1Gesture.Side.LEFT)
+            )
+        }
+
         fun find(
             duration: Duration,
             sideFilter: Set<G1Gesture.Side>? = null
@@ -381,10 +432,12 @@ class G1 {
                     .forEach { pair ->
                         val left = pair.left
                         val right = pair.right
-                        trySendBlocking(G1(
-                            G1Device(right, G1Gesture.Side.RIGHT),
-                            G1Device(left, G1Gesture.Side.LEFT)
-                        ))
+                        trySendBlocking(
+                            G1(
+                                G1Device.fromScanResult(right, G1Gesture.Side.RIGHT),
+                                G1Device.fromScanResult(left, G1Gesture.Side.LEFT)
+                            )
+                        )
                     }
             }
 

@@ -6,6 +6,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -215,6 +217,184 @@ class G1Service: Service() {
         }
     }
 
+    private fun normalizedAddress(address: String): String =
+        address.replace(":", "").uppercase(Locale.ROOT)
+
+    private fun parseNormalizedAddresses(id: String): Pair<String, String>? {
+        val sanitized = id.filter { it.isLetterOrDigit() }.uppercase(Locale.ROOT)
+        if (sanitized.length != 24) {
+            return null
+        }
+        val left = sanitized.substring(0, 12)
+        val right = sanitized.substring(12, 24)
+        return Pair(left, right)
+    }
+
+    private suspend fun prepareForDiscovery(initialLastConnected: String?): String? {
+        state.value = state.value.copy(
+            status = ServiceStatus.LOOKING,
+            glasses = state.value.glasses.values
+                .filter { it.connectionState == G1.ConnectionState.CONNECTED }
+                .associate { Pair(it.g1.id, it) }
+        )
+
+        var lastConnectedId = initialLastConnected ?: readLastConnectedId()
+        val connectedId = state.value.glasses.values
+            .find { it.connectionState == G1.ConnectionState.CONNECTED }
+            ?.g1?.id
+        if (connectedId != null && lastConnectedId != connectedId) {
+            persistLastConnectedId(connectedId)
+            lastConnectedId = connectedId
+        }
+        return lastConnectedId
+    }
+
+    private fun trackGlasses(
+        found: G1,
+        signalStrength: Int?,
+        rssi: Int?
+    ) {
+        if (state.value.glasses.containsKey(found.id)) {
+            return
+        }
+
+        val glassesState = found.state.value
+        state.value = state.value.copy(
+            glasses = state.value.glasses.plus(
+                Pair(
+                    found.id,
+                    InternalGlasses(
+                        connectionState = glassesState.connectionState,
+                        batteryPercentage = glassesState.batteryPercentage,
+                        leftConnectionState = glassesState.leftConnectionState,
+                        rightConnectionState = glassesState.rightConnectionState,
+                        leftBatteryPercentage = glassesState.leftBatteryPercentage,
+                        rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                        signalStrength = signalStrength,
+                        rssi = rssi,
+                        g1 = found
+                    )
+                )
+            )
+        )
+        observeGestures(found.id, found)
+        coroutineScope.launch {
+            found.state.collect { glassesState ->
+                Log.d(
+                    "G1Service",
+                    "GLASSES_STATE ${found.name} (${found.id}) = ${glassesState}"
+                )
+                state.value =
+                    state.value.copy(glasses = state.value.glasses.entries.associate {
+                        if (it.key == found.id) {
+                            Pair(
+                                it.key,
+                                it.value.copy(
+                                    connectionState = glassesState.connectionState,
+                                    batteryPercentage = glassesState.batteryPercentage,
+                                    leftConnectionState = glassesState.leftConnectionState,
+                                    rightConnectionState = glassesState.rightConnectionState,
+                                    leftBatteryPercentage = glassesState.leftBatteryPercentage,
+                                    rightBatteryPercentage = glassesState.rightBatteryPercentage,
+                                    signalStrength = it.value.signalStrength,
+                                    rssi = it.value.rssi,
+                                    g1 = it.value.g1
+                                )
+                            )
+                        } else {
+                            Pair(
+                                it.key,
+                                it.value
+                            )
+                        }
+                    })
+                ensureFullyDisconnected(found.id, found, glassesState)
+            }
+        }
+    }
+
+    private suspend fun tryDirectBondedConnection(): Boolean {
+        val storedId = readLastConnectedId() ?: return false
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+
+        val lastConnectedId = prepareForDiscovery(storedId) ?: return false
+        val normalizedAddresses = parseNormalizedAddresses(lastConnectedId) ?: return false
+
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            ?: return false
+        val adapter = bluetoothManager.adapter ?: return false
+        val bondedDevices = adapter.bondedDevices ?: emptySet()
+        if (bondedDevices.isEmpty()) {
+            return false
+        }
+
+        fun findDevice(target: String): BluetoothDevice? =
+            bondedDevices.firstOrNull { normalizedAddress(it.address) == target }
+
+        val leftDevice = findDevice(normalizedAddresses.first)
+        val rightDevice = findDevice(normalizedAddresses.second)
+        if (leftDevice == null || rightDevice == null) {
+            return false
+        }
+
+        val g1 = G1.fromBondedDevices(leftDevice, rightDevice) ?: return false
+
+        Log.i("G1Service", "Attempting direct connection to bonded glasses ${g1.name}")
+        trackGlasses(g1, null, null)
+        state.value = state.value.copy(status = ServiceStatus.LOOKED)
+        binder.connectGlasses(g1.id, null)
+        return true
+    }
+
+    private fun startScanning() {
+        coroutineScope.launch {
+            val filterSnapshot = sideMarkerFilter?.toSet()
+            if (filterSnapshot != null) {
+                Log.i(
+                    "G1Service",
+                    "Scanning with side marker filter: ${filterSnapshot.joinToString { it.name }}"
+                )
+            }
+
+            var lastConnectedId = prepareForDiscovery(null)
+
+            try {
+                G1.find(15.toDuration(DurationUnit.SECONDS), filterSnapshot).collect { found ->
+                    if(found != null) {
+                        Log.d("G1Service", "SCANNING FOUND = ${found}")
+
+                        if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
+                            trackGlasses(
+                                found,
+                                found.initialSignalStrength(),
+                                found.initialAverageRssi()
+                            )
+
+                            if(lastConnectedId == found.id) {
+                                binder.connectGlasses(found.id, null)
+                                lastConnectedId = found.id
+                            }
+                        }
+                    } else {
+                        state.value = state.value.copy(
+                            status = ServiceStatus.LOOKED,
+                            glasses = state.value.glasses,
+                        )
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e("G1Service", "Error while scanning for glasses", e)
+                state.value = state.value.copy(status = ServiceStatus.ERROR)
+            }
+        }
+    }
+
     // client-service interface --------------------------------------------------------------------
 
     private fun commonObserveState(callback: ObserveStateCallback?) {
@@ -276,109 +456,13 @@ class G1Service: Service() {
             if(state.value.status == ServiceStatus.LOOKING) {
                 return
             }
-            withPermissions {
-                coroutineScope.launch {
-                    val filterSnapshot = sideMarkerFilter?.toSet()
-                    if (filterSnapshot != null) {
-                        Log.i(
-                            "G1Service",
-                            "Scanning with side marker filter: ${filterSnapshot.joinToString { it.name }}"
-                        )
-                    }
-                    // clear all glasses except connected
-                    state.value = state.value.copy(
-                        status = ServiceStatus.LOOKING,
-                        glasses = state.value.glasses.values
-                            .filter { it.connectionState == G1.ConnectionState.CONNECTED }
-                            .associate { Pair(it.g1.id, it) }
-                    )
+            coroutineScope.launch {
+                if (tryDirectBondedConnection()) {
+                    return@launch
+                }
 
-                    // make sure last connected id makes sense, fix if it doesn't for some reason
-                    var lastConnectedId = readLastConnectedId()
-                    val connectedId = state.value.glasses.values.find { it.connectionState == G1.ConnectionState.CONNECTED }?.g1?.id
-                    if(connectedId != null && lastConnectedId != connectedId) {
-                        persistLastConnectedId(connectedId)
-                        lastConnectedId = connectedId
-                    }
-
-                    try {
-                        G1.find(15.toDuration(DurationUnit.SECONDS), filterSnapshot).collect { found ->
-                            if(found != null) {
-                                Log.d("G1Service", "SCANNING FOUND = ${found}")
-
-                                // add to glasses state if not already there
-                                if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
-                                    val glassesState = found.state.value
-                                    state.value = state.value.copy(
-                                        glasses = state.value.glasses.plus(
-                                            Pair(
-                                                found.id,
-                                                InternalGlasses(
-                                                    connectionState = glassesState.connectionState,
-                                                    batteryPercentage = glassesState.batteryPercentage,
-                                                    leftConnectionState = glassesState.leftConnectionState,
-                                                    rightConnectionState = glassesState.rightConnectionState,
-                                                    leftBatteryPercentage = glassesState.leftBatteryPercentage,
-                                                    rightBatteryPercentage = glassesState.rightBatteryPercentage,
-                                                    signalStrength = found.initialSignalStrength(),
-                                                    rssi = found.initialAverageRssi(),
-                                                    g1 = found
-                                                )
-                                            )
-                                        )
-                                    )
-                                    observeGestures(found.id, found)
-                                    coroutineScope.launch {
-                                        found.state.collect { glassesState ->
-                                            Log.d(
-                                                "G1Service",
-                                                "GLASSES_STATE ${found.name} (${found.id}) = ${glassesState}"
-                                            )
-                                            state.value =
-                                                state.value.copy(glasses = state.value.glasses.entries.associate {
-                                                    if (it.key == found.id) {
-                                                        Pair(
-                                                            it.key,
-                                                            it.value.copy(
-                                                                connectionState = glassesState.connectionState,
-                                                                batteryPercentage = glassesState.batteryPercentage,
-                                                                leftConnectionState = glassesState.leftConnectionState,
-                                                                rightConnectionState = glassesState.rightConnectionState,
-                                                                leftBatteryPercentage = glassesState.leftBatteryPercentage,
-                                                                rightBatteryPercentage = glassesState.rightBatteryPercentage,
-                                                                signalStrength = it.value.signalStrength,
-                                                                rssi = it.value.rssi,
-                                                                g1 = it.value.g1
-                                                            )
-                                                        )
-                                                    } else {
-                                                        Pair(
-                                                            it.key,
-                                                            it.value
-                                                        )
-                                                    }
-                                                })
-                                            ensureFullyDisconnected(found.id, found, glassesState)
-                                        }
-                                    }
-
-                                    // if this is the pair we were connected to before, reconnect
-                                    if(lastConnectedId == found.id) {
-                                        connectGlasses(found.id, null)
-                                        lastConnectedId = found.id
-                                    }
-                                }
-                            } else {
-                                state.value = state.value.copy(
-                                    status = ServiceStatus.LOOKED,
-                                    glasses = state.value.glasses,
-                                )
-                            }
-                        }
-                    } catch (e: Throwable) {
-                        Log.e("G1Service", "Error while scanning for glasses", e)
-                        state.value = state.value.copy(status = ServiceStatus.ERROR)
-                    }
+                withPermissions {
+                    startScanning()
                 }
             }
         }

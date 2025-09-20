@@ -1,6 +1,7 @@
 package io.texne.g1.basis.core
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
@@ -20,15 +21,39 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
-internal class G1Device(
-    private val scanResult: ScanResult,
-    private val side: G1Gesture.Side
+internal class G1Device private constructor(
+    private val bluetoothDevice: BluetoothDevice,
+    private val side: G1Gesture.Side,
+    val name: String,
+    val address: String,
+    val rssi: Int?
 ) {
 
-    @SuppressLint("MissingPermission")
-    val name = scanResult.device.name
-    val address = scanResult.device.address
-    val rssi: Int? = scanResult.rssi.takeIf { it != 0 }
+    companion object {
+        fun fromScanResult(scanResult: ScanResult, side: G1Gesture.Side): G1Device {
+            val deviceName = scanResult.device.name
+                ?: throw IllegalArgumentException("Scan result missing device name")
+            return G1Device(
+                bluetoothDevice = scanResult.device,
+                side = side,
+                name = deviceName,
+                address = scanResult.device.address,
+                rssi = scanResult.rssi.takeIf { it != 0 }
+            )
+        }
+
+        fun fromBluetoothDevice(device: BluetoothDevice, side: G1Gesture.Side): G1Device {
+            val deviceName = device.name
+                ?: throw IllegalArgumentException("Bluetooth device missing name")
+            return G1Device(
+                bluetoothDevice = device,
+                side = side,
+                name = deviceName,
+                address = device.address,
+                rssi = null
+            )
+        }
+    }
 
     // state flow ----------------------------------------------------------------------------------
 
@@ -56,10 +81,10 @@ internal class G1Device(
     @SuppressLint("MissingPermission")
     suspend fun connect(context: Context, scope: CoroutineScope): Boolean {
         if(this::manager.isInitialized.not()) {
-            manager = G1BLEManager(scanResult.device.name, context, scope)
+            manager = G1BLEManager(name, context, scope)
             scope.launch {
                 manager.connectionState.collect {
-                    Log.d("G1Device", "CONNECTION_STATUS ${scanResult.device.name} = ${it}")
+                    Log.d("G1Device", "CONNECTION_STATUS ${name} = ${it}")
                     writableState.value = state.value.copy(
                         connectionState = it
                     )
@@ -98,7 +123,7 @@ internal class G1Device(
             }
         }
         try {
-            manager.connect(scanResult.device)
+            manager.connect(bluetoothDevice)
                 .useAutoConnect(true)
                 .retry(3)
                 .timeout(30_000)
