@@ -181,12 +181,72 @@ class G1 {
     // find devices --------------------------------------------------------------------------------
 
     companion object {
-        fun find(duration: Duration) = callbackFlow<G1?> {
-            data class FoundPair(
-                val left: ScanResult? = null,
-                val right: ScanResult? = null
-            )
+        internal data class FoundPair(
+            val left: ScanResult? = null,
+            val right: ScanResult? = null
+        )
 
+        private fun pairingToken(name: String): String {
+            val segments = name.split("_")
+            val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
+            if (sideIndex == -1) {
+                return name
+            }
+            val filtered = segments.filterIndexed { index, _ -> index != sideIndex }
+            return if (filtered.isEmpty()) name else filtered.joinToString("_")
+        }
+
+        private fun String.hasSideToken(side: String): Boolean =
+            this.split("_").any { it == side }
+
+        private fun ScanResult.isLeftDevice(): Boolean =
+            this.device.name?.hasSideToken("L") == true
+
+        private fun ScanResult.isRightDevice(): Boolean =
+            this.device.name?.hasSideToken("R") == true
+
+        internal fun collectCompletePairs(
+            rawResults: List<ScanResult?>,
+            foundAddresses: MutableList<String>,
+            foundPairs: MutableMap<String, FoundPair>
+        ): List<FoundPair> {
+            val completedPairs = mutableListOf<FoundPair>()
+            rawResults
+                .filter { result ->
+                    result != null &&
+                        result.device.name != null &&
+                        result.device.name.startsWith(DEVICE_NAME_PREFIX) &&
+                        foundAddresses.contains(result.device.address).not()
+                }
+                .distinctBy { result -> result!!.device.address }
+                .groupBy { result ->
+                    val nonNullResult = result!!
+                    pairingToken(nonNullResult.device.name!!)
+                }
+                .forEach { (key, grouped) ->
+                    grouped.forEach { found ->
+                        val nonNullFound = found ?: return@forEach
+                        foundAddresses.add(nonNullFound.device.address)
+                    }
+
+                    val existing = foundPairs[key]
+                    val candidateLeft = grouped.firstOrNull { it?.isLeftDevice() == true }
+                    val candidateRight = grouped.firstOrNull { it?.isRightDevice() == true }
+                    val resolvedLeft = existing?.left ?: candidateLeft
+                    val resolvedRight = existing?.right ?: candidateRight
+
+                    if (resolvedLeft != null && resolvedRight != null) {
+                        foundPairs.remove(key)
+                        completedPairs.add(FoundPair(resolvedLeft, resolvedRight))
+                    } else if (resolvedLeft != null || resolvedRight != null) {
+                        foundPairs[key] = FoundPair(resolvedLeft, resolvedRight)
+                    }
+                }
+
+            return completedPairs
+        }
+
+        fun find(duration: Duration) = callbackFlow<G1?> {
             val scanner = BluetoothLeScannerCompat.getScanner()
             val settings = ScanSettings.Builder()
                 .setLegacy(false)
@@ -199,27 +259,14 @@ class G1 {
             val callback = object: ScanCallback() {
                 @SuppressLint("MissingPermission")
                 override fun onBatchScanResults(results: List<ScanResult?>) {
-                    results
-                        .filter { it -> it != null
-                                && it.device.name != null
-                                && it.device.name.startsWith(DEVICE_NAME_PREFIX)
-                                && foundAddresses.contains(it.device.address).not() }
-                        .distinctBy { it!!.device.address }
-                        .groupBy { it!!.device.name.split("_")[1] }
-                        .forEach {
-                            it.value.forEach { found ->
-                                foundAddresses.add(found!!.device.address)
-                            }
-                            val pair = foundPairs.get(it.key)
-                            var left = pair?.left ?: it.value.find { found -> found!!.device.name.split('_')[2] == "L" }
-                            var right = pair?.right ?: it.value.find { found -> found!!.device.name.split('_')[2] == "R" }
-                            if(left != null && right != null) {
-                                foundPairs.remove(it.key)
-                                trySendBlocking(G1(
-                                    G1Device(right, G1Gesture.Side.RIGHT),
-                                    G1Device(left, G1Gesture.Side.LEFT)
-                                ))
-                            }
+                    collectCompletePairs(results, foundAddresses, foundPairs)
+                        .forEach { pair ->
+                            val left = pair.left ?: return@forEach
+                            val right = pair.right ?: return@forEach
+                            trySendBlocking(G1(
+                                G1Device(right, G1Gesture.Side.RIGHT),
+                                G1Device(left, G1Gesture.Side.LEFT)
+                            ))
                         }
                     }
             }
