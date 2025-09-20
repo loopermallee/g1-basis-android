@@ -186,14 +186,34 @@ class G1 {
             val right: ScanResult? = null
         )
 
+        private val SUFFIX_NORMALIZATION_MAP = listOf(
+            setOf("CEOCDF", "1D7162")
+        ).flatMap { group ->
+            if (group.isEmpty()) {
+                emptyList()
+            } else {
+                val canonical = group.sorted().first()
+                group.map { suffix -> suffix to canonical }
+            }
+        }.toMap()
+
+        private fun normalizeSuffix(segment: String): String =
+            SUFFIX_NORMALIZATION_MAP[segment] ?: segment
+
         private fun pairingToken(name: String): String {
             val segments = name.split("_")
             val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
             if (sideIndex == -1) {
                 return name
             }
-            val filtered = segments.filterIndexed { index, _ -> index != sideIndex }
-            return if (filtered.isEmpty()) name else filtered.joinToString("_")
+            val normalized = segments.mapIndexedNotNull { index, segment ->
+                when {
+                    index == sideIndex -> null
+                    index > sideIndex -> normalizeSuffix(segment)
+                    else -> segment
+                }
+            }
+            return if (normalized.isEmpty()) name else normalized.joinToString("_")
         }
 
         private fun String.hasSideToken(side: String): Boolean =

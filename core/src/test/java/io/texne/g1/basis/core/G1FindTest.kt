@@ -49,6 +49,43 @@ class G1FindTest {
         )
     }
 
+    @Test
+    fun `asymmetric suffix pairs normalize to same key`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+
+        val results = listOf(
+            fakeScanResult("AA:BB:CC:DD:EE:10", "Even G1_7_L_CEOCDF"),
+            fakeScanResult("AA:BB:CC:DD:EE:11", "Even G1_7_R_1D7162"),
+            fakeScanResult("AA:BB:CC:DD:EE:12", "Even G1_7_L_unpaired"),
+            fakeScanResult("AA:BB:CC:DD:EE:13", "Even G1_7_R_different"),
+        )
+
+        val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
+
+        assertEquals("Expected one completed pair", 1, completed.size)
+        val pair = completed.single()
+        assertEquals("Even G1_7_L_CEOCDF", pair.left?.device?.name)
+        assertEquals("Even G1_7_R_1D7162", pair.right?.device?.name)
+
+        assertEquals(
+            setOf("Even G1_7_unpaired", "Even G1_7_different"),
+            foundPairs.keys
+        )
+        assertEquals("Even G1_7_L_unpaired", foundPairs["Even G1_7_unpaired"]?.left?.device?.name)
+        assertEquals("Even G1_7_R_different", foundPairs["Even G1_7_different"]?.right?.device?.name)
+
+        assertEquals(
+            listOf(
+                "AA:BB:CC:DD:EE:10",
+                "AA:BB:CC:DD:EE:11",
+                "AA:BB:CC:DD:EE:12",
+                "AA:BB:CC:DD:EE:13",
+            ),
+            foundAddresses
+        )
+    }
+
     private fun fakeScanResult(address: String, name: String): ScanResult {
         val device = mockk<BluetoothDevice>()
         every { device.address } returns address
