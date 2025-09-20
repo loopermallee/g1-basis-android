@@ -21,6 +21,7 @@ import com.nabinbhandari.android.permissions.PermissionHandler
 import com.nabinbhandari.android.permissions.Permissions
 import io.texne.g1.basis.core.G1
 import io.texne.g1.basis.core.G1Gesture
+import io.texne.g1.basis.service.protocol.G1DiscoveredDevice
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
 import io.texne.g1.basis.service.protocol.OperationCallback
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import no.nordicsemi.android.support.v18.scanner.ScanResult
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
@@ -89,11 +91,21 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     return glasses
 }
 
+private fun Map<String, String>.toParcelableDevices(): Array<G1DiscoveredDevice> =
+    this.entries.map { (address, name) ->
+        G1DiscoveredDevice().also { device ->
+            device.address = address
+            device.name = name
+        }
+    }.toTypedArray()
+
 private fun G1Service.InternalState.toState(): G1ServiceState {
     val state = G1ServiceState()
     state.status = this.status.toInt()
     state.glasses = this.glasses.values.map { it -> it.toGlasses() }.toTypedArray()
     state.gestureEvent = this.gestureEvent?.toParcelable()
+    state.leftDevices = this.leftDevices.toParcelableDevices()
+    state.rightDevices = this.rightDevices.toParcelableDevices()
     return state
 }
 
@@ -120,7 +132,9 @@ class G1Service: Service() {
     internal data class InternalState(
         val status: ServiceStatus = ServiceStatus.READY,
         val glasses: Map<String, InternalGlasses> = mapOf(),
-        val gestureEvent: ServiceGestureEvent? = null
+        val gestureEvent: ServiceGestureEvent? = null,
+        val leftDevices: Map<String, String> = mapOf(),
+        val rightDevices: Map<String, String> = mapOf()
     )
     internal data class ServiceGestureEvent(
         val sequence: Int,
@@ -129,6 +143,8 @@ class G1Service: Service() {
     private val state = MutableStateFlow<InternalState>(InternalState())
     private val gestureCollectors = mutableMapOf<String, Job>()
     private var nextGestureSequence: Int = 1
+    private val discoveredLeftDevices = mutableMapOf<String, ScanResult>()
+    private val discoveredRightDevices = mutableMapOf<String, ScanResult>()
 
     private fun observeGestures(id: String, g1: G1) {
         gestureCollectors[id]?.cancel()
@@ -139,6 +155,49 @@ class G1Service: Service() {
                     gesture = gesture
                 )
                 state.value = state.value.copy(gestureEvent = event)
+            }
+        }
+    }
+
+    private fun registerGlasses(g1: G1) {
+        if(state.value.glasses.containsKey(g1.id)) {
+            return
+        }
+        state.value = state.value.copy(
+            glasses = state.value.glasses.plus(
+                Pair(
+                    g1.id,
+                    InternalGlasses(
+                        g1.state.value.connectionState,
+                        g1.state.value.batteryPercentage,
+                        g1
+                    )
+                )
+            )
+        )
+        observeGestures(g1.id, g1)
+        coroutineScope.launch {
+            g1.state.collect { glassesState ->
+                Log.d(
+                    "G1Service",
+                    "GLASSES_STATE ${g1.name} (${g1.id}) = ${glassesState}"
+                )
+                state.value = state.value.copy(
+                    glasses = state.value.glasses.entries.associate { entry ->
+                        if (entry.key == g1.id) {
+                            Pair(
+                                entry.key,
+                                entry.value.copy(
+                                    connectionState = glassesState.connectionState,
+                                    batteryPercentage = glassesState.batteryPercentage,
+                                    g1 = entry.value.g1
+                                )
+                            )
+                        } else {
+                            Pair(entry.key, entry.value)
+                        }
+                    }
+                )
             }
         }
     }
@@ -183,6 +242,51 @@ class G1Service: Service() {
         }
     }
 
+    private fun connectDevicesInternal(
+        leftAddress: String,
+        rightAddress: String,
+        callback: OperationCallback?
+    ) {
+        val leftResult = discoveredLeftDevices[leftAddress]
+        val rightResult = discoveredRightDevices[rightAddress]
+        if(leftResult == null || rightResult == null) {
+            callback?.onResult(false)
+            return
+        }
+        val id = G1.buildId(leftAddress, rightAddress)
+        if(state.value.glasses.containsKey(id).not()) {
+            val g1 = G1.fromScanResults(rightResult, leftResult)
+            registerGlasses(g1)
+        }
+        val glasses = state.value.glasses[id]
+        if(glasses == null) {
+            callback?.onResult(false)
+            return
+        }
+        when(glasses.connectionState) {
+            G1.ConnectionState.CONNECTED -> {
+                callback?.onResult(true)
+                return
+            }
+            G1.ConnectionState.CONNECTING,
+            G1.ConnectionState.DISCONNECTING -> {
+                callback?.onResult(false)
+                return
+            }
+            else -> {}
+        }
+        coroutineScope.launch {
+            val result = glasses.g1.connect(this@G1Service, coroutineScope)
+            if(result == true) {
+                val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
+                dataStore.edit { settings ->
+                    settings[LAST_CONNECTED_ID] = id
+                }
+            }
+            callback?.onResult(result)
+        }
+    }
+
     private val clientBinder = object : IG1ServiceClient.Stub() {
         override fun observeState(callback: ObserveStateCallback?) = commonObserveState(callback)
         override fun displayTextPage(
@@ -211,7 +315,9 @@ class G1Service: Service() {
                         status = ServiceStatus.LOOKING,
                         glasses = state.value.glasses.values
                             .filter { it.connectionState == G1.ConnectionState.CONNECTED }
-                            .associate { Pair(it.g1.id, it) }
+                            .associate { Pair(it.g1.id, it) },
+                        leftDevices = mapOf(),
+                        rightDevices = mapOf()
                     )
 
                     // make sure last connected id makes sense, fix if it doesn't for some reason
@@ -225,78 +331,76 @@ class G1Service: Service() {
                         lastConnectedId = connectedId
                     }
 
-                    G1.find(15.toDuration(DurationUnit.SECONDS)).collect { found ->
-                        if(found != null) {
-                            Log.d("G1Service", "SCANNING FOUND = ${found}")
+                    discoveredLeftDevices.clear()
+                    discoveredRightDevices.clear()
 
-                            // add to glasses state if not already there
-                            if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
-                                state.value = state.value.copy(
-                                    glasses = state.value.glasses.plus(
-                                        Pair(found.id, InternalGlasses(found.state.value.connectionState, found.state.value.batteryPercentage, found))
-                                    )
-                                )
-                                observeGestures(found.id, found)
-                                coroutineScope.launch {
-                                    found.state.collect { glassesState ->
-                                        Log.d(
-                                            "G1Service",
-                                            "GLASSES_STATE ${found.name} (${found.id}) = ${glassesState}"
-                                        )
-                                        state.value =
-                                            state.value.copy(glasses = state.value.glasses.entries.associate {
-                                                if (it.key == found.id) {
-                                                    Pair(
-                                                        it.key,
-                                                        it.value.copy(
-                                                            connectionState = glassesState.connectionState,
-                                                            batteryPercentage = glassesState.batteryPercentage,
-                                                            g1 = it.value.g1
-                                                        )
-                                                    )
-                                                } else {
-                                                    Pair(
-                                                        it.key,
-                                                        it.value
-                                                    )
-                                                }
-                                            })
+                    G1.find(15.toDuration(DurationUnit.SECONDS)).collect { event ->
+                        when(event) {
+                            is G1.Companion.ScanEvent.Update -> {
+                                event.newLeftDevices.forEach { result ->
+                                    discoveredLeftDevices[result.device.address] = result
+                                }
+                                event.newRightDevices.forEach { result ->
+                                    discoveredRightDevices[result.device.address] = result
+                                }
+
+                                event.completedPairs.forEach { pair ->
+                                    val left = pair.left
+                                    val right = pair.right
+                                    if(left != null) {
+                                        discoveredLeftDevices[left.device.address] = left
+                                    }
+                                    if(right != null) {
+                                        discoveredRightDevices[right.device.address] = right
+                                    }
+                                    if(left != null && right != null) {
+                                        val g1 = G1.fromScanResults(right, left)
+                                        registerGlasses(g1)
+                                        val internalGlasses = state.value.glasses[g1.id]
+                                        if(
+                                            lastConnectedId == g1.id &&
+                                            internalGlasses != null &&
+                                            (internalGlasses.connectionState == G1.ConnectionState.DISCONNECTED ||
+                                                internalGlasses.connectionState == G1.ConnectionState.UNINITIALIZED)
+                                        ) {
+                                            connectDevicesInternal(left.device.address, right.device.address, null)
+                                        }
                                     }
                                 }
 
-                                // if this is the pair we were connected to before, reconnect
-                                if(lastConnectedId == found.id) {
-                                    connectGlasses(found.id, null)
-                                }
+                                state.value = state.value.copy(
+                                    leftDevices = discoveredLeftDevices.mapValues { entry ->
+                                        entry.value.device.name ?: entry.key
+                                    },
+                                    rightDevices = discoveredRightDevices.mapValues { entry ->
+                                        entry.value.device.name ?: entry.key
+                                    }
+                                )
                             }
-                        } else {
-                            state.value = state.value.copy(
-                                status = ServiceStatus.LOOKED,
-                                glasses = state.value.glasses,
-                            )
+                            G1.Companion.ScanEvent.Finished -> {
+                                state.value = state.value.copy(
+                                    status = ServiceStatus.LOOKED,
+                                    leftDevices = discoveredLeftDevices.mapValues { entry ->
+                                        entry.value.device.name ?: entry.key
+                                    },
+                                    rightDevices = discoveredRightDevices.mapValues { entry ->
+                                        entry.value.device.name ?: entry.key
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        override fun connectGlasses(id: String?, callback: OperationCallback?) {
-            if(id != null) {
-                val glasses = state.value.glasses.get(id)
-                if (glasses != null) {
-                    coroutineScope.launch {
-                        val result = glasses.g1.connect(this@G1Service, coroutineScope)
-                        if(result == true) {
-                            val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
-                            dataStore.edit { settings ->
-                                settings[LAST_CONNECTED_ID] = id
-                            }
-                        }
-                        callback?.onResult(result)
-                    }
-                } else {
-                    callback?.onResult(false)
-                }
+        override fun connectDevices(
+            leftAddress: String?,
+            rightAddress: String?,
+            callback: OperationCallback?
+        ) {
+            if(leftAddress != null && rightAddress != null) {
+                connectDevicesInternal(leftAddress, rightAddress, callback)
             } else {
                 callback?.onResult(false)
             }

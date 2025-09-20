@@ -28,6 +28,10 @@ class ApplicationViewModel @Inject constructor(
         val error: Boolean = false,
         val scanning: Boolean = false,
         val nearbyGlasses: List<G1ServiceCommon.Glasses>? = null,
+        val availableLeftDevices: List<G1ServiceCommon.AvailableDevice> = emptyList(),
+        val availableRightDevices: List<G1ServiceCommon.AvailableDevice> = emptyList(),
+        val selectedLeftDeviceAddress: String? = null,
+        val selectedRightDeviceAddress: String? = null,
         val selectedSection: AppSection = AppSection.GLASSES
     )
 
@@ -43,12 +47,20 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    val state = repository.getServiceStateFlow().combine(selectedSection) { serviceState, section ->
+    val state = combine(
+        repository.getServiceStateFlow(),
+        repository.observeScannerSelection(),
+        selectedSection
+    ) { serviceState, selection, section ->
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
             nearbyGlasses = if(serviceState == null || serviceState.status == ServiceStatus.READY) null else serviceState.glasses,
+            availableLeftDevices = serviceState?.availableLeftDevices ?: emptyList(),
+            availableRightDevices = serviceState?.availableRightDevices ?: emptyList(),
+            selectedLeftDeviceAddress = selection.leftAddress,
+            selectedRightDeviceAddress = selection.rightAddress,
             selectedSection = section
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, State())
@@ -57,14 +69,27 @@ class ApplicationViewModel @Inject constructor(
         repository.startLooking()
     }
 
-    fun connect(id: String) {
+    fun connectSelectedDevices() {
         viewModelScope.launch {
-            repository.connectGlasses(id)
+            val selection = repository.currentScannerSelection()
+            val left = selection.leftAddress
+            val right = selection.rightAddress
+            if(left != null && right != null) {
+                repository.connectDevices(left, right)
+            }
         }
     }
 
     fun disconnect(id: String) {
         repository.disconnectGlasses(id)
+    }
+
+    fun selectLeftDevice(address: String?) {
+        repository.selectLeftDevice(address)
+    }
+
+    fun selectRightDevice(address: String?) {
+        repository.selectRightDevice(address)
     }
 
     fun selectSection(section: AppSection) {

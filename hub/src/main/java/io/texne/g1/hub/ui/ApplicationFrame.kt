@@ -58,8 +58,14 @@ fun ApplicationFrame() {
                         scanning = state.scanning,
                         error = state.error,
                         nearbyGlasses = state.nearbyGlasses,
+                        availableLeftDevices = state.availableLeftDevices,
+                        availableRightDevices = state.availableRightDevices,
+                        selectedLeftAddress = state.selectedLeftDeviceAddress,
+                        selectedRightAddress = state.selectedRightDeviceAddress,
                         scan = { viewModel.scan() },
-                        connect = { viewModel.connect(it) },
+                        onSelectLeft = viewModel::selectLeftDevice,
+                        onSelectRight = viewModel::selectRightDevice,
+                        connectSelected = { viewModel.connectSelectedDevices() },
                     )
                 }
             }

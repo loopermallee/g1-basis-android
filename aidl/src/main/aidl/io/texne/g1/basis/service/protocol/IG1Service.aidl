@@ -7,7 +7,7 @@ import io.texne.g1.basis.service.protocol.OperationCallback;
 interface IG1Service {
     void observeState(ObserveStateCallback callback);
     void lookForGlasses();
-    void connectGlasses(String id, @nullable OperationCallback callback);
+    void connectDevices(String leftAddress, String rightAddress, @nullable OperationCallback callback);
     void disconnectGlasses(String id, @nullable OperationCallback callback);
     void displayTextPage(String id, in String[] page, @nullable OperationCallback callback);
     void stopDisplaying(String id, @nullable OperationCallback callback);

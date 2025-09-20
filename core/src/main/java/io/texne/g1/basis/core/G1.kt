@@ -186,6 +186,22 @@ class G1 {
             val right: ScanResult? = null
         )
 
+        internal data class ScanUpdate(
+            val newLeftDevices: List<ScanResult> = emptyList(),
+            val newRightDevices: List<ScanResult> = emptyList(),
+            val completedPairs: List<FoundPair> = emptyList()
+        )
+
+        sealed class ScanEvent {
+            data class Update(
+                val newLeftDevices: List<ScanResult>,
+                val newRightDevices: List<ScanResult>,
+                val completedPairs: List<FoundPair>
+            ) : ScanEvent()
+
+            object Finished : ScanEvent()
+        }
+
         private val SUFFIX_NORMALIZATION_MAP = listOf(
             setOf("CEOCDF", "1D7162")
         ).flatMap { group ->
@@ -225,12 +241,14 @@ class G1 {
         private fun ScanResult.isRightDevice(): Boolean =
             this.device.name?.hasSideToken("R") == true
 
-        internal fun collectCompletePairs(
+        internal fun collectScanUpdates(
             rawResults: List<ScanResult?>,
             foundAddresses: MutableList<String>,
             foundPairs: MutableMap<String, FoundPair>
-        ): List<FoundPair> {
+        ): ScanUpdate {
             val completedPairs = mutableListOf<FoundPair>()
+            val newLeftDevices = mutableListOf<ScanResult>()
+            val newRightDevices = mutableListOf<ScanResult>()
             rawResults
                 .filter { result ->
                     result != null &&
@@ -252,6 +270,12 @@ class G1 {
                     val existing = foundPairs[key]
                     val candidateLeft = grouped.firstOrNull { it?.isLeftDevice() == true }
                     val candidateRight = grouped.firstOrNull { it?.isRightDevice() == true }
+                    if (candidateLeft != null) {
+                        newLeftDevices.add(candidateLeft)
+                    }
+                    if (candidateRight != null) {
+                        newRightDevices.add(candidateRight)
+                    }
                     val resolvedLeft = existing?.left ?: candidateLeft
                     val resolvedRight = existing?.right ?: candidateRight
 
@@ -263,10 +287,14 @@ class G1 {
                     }
                 }
 
-            return completedPairs
+            return ScanUpdate(
+                newLeftDevices = newLeftDevices,
+                newRightDevices = newRightDevices,
+                completedPairs = completedPairs
+            )
         }
 
-        fun find(duration: Duration) = callbackFlow<G1?> {
+        fun find(duration: Duration) = callbackFlow<ScanEvent> {
             val scanner = BluetoothLeScannerCompat.getScanner()
             val settings = ScanSettings.Builder()
                 .setLegacy(false)
@@ -279,25 +307,35 @@ class G1 {
             val callback = object: ScanCallback() {
                 @SuppressLint("MissingPermission")
                 override fun onBatchScanResults(results: List<ScanResult?>) {
-                    collectCompletePairs(results, foundAddresses, foundPairs)
-                        .forEach { pair ->
-                            val left = pair.left ?: return@forEach
-                            val right = pair.right ?: return@forEach
-                            trySendBlocking(G1(
-                                G1Device(right, G1Gesture.Side.RIGHT),
-                                G1Device(left, G1Gesture.Side.LEFT)
-                            ))
-                        }
+                    val update = collectScanUpdates(results, foundAddresses, foundPairs)
+                    if (update.newLeftDevices.isNotEmpty() || update.newRightDevices.isNotEmpty() || update.completedPairs.isNotEmpty()) {
+                        trySendBlocking(
+                            ScanEvent.Update(
+                                newLeftDevices = update.newLeftDevices,
+                                newRightDevices = update.newRightDevices,
+                                completedPairs = update.completedPairs
+                            )
+                        )
                     }
+                }
             }
             scanner.startScan(listOf(), settings, callback)
             Handler(Looper.getMainLooper()).postDelayed({
                 scanner.stopScan(callback)
-                trySendBlocking(null)
+                trySendBlocking(ScanEvent.Finished)
             }, duration.inWholeMilliseconds)
             awaitClose {
                 scanner.stopScan(callback)
             }
         }
+
+        internal fun fromScanResults(right: ScanResult, left: ScanResult): G1 =
+            G1(
+                G1Device(right, G1Gesture.Side.RIGHT),
+                G1Device(left, G1Gesture.Side.LEFT)
+            )
+
+        internal fun buildId(leftAddress: String, rightAddress: String): String =
+            "$leftAddress$rightAddress".filter { it != ':' }
     }
 }

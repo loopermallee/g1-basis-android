@@ -65,7 +65,19 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
                                     else -> GlassesStatus.ERROR
                                 },
                                 batteryPercentage = it.batteryPercentage
-                            ) }
+                            ) },
+                            availableLeftDevices = newState.leftDevices?.map { device ->
+                                AvailableDevice(
+                                    address = device.address,
+                                    name = device.name
+                                )
+                            } ?: emptyList(),
+                            availableRightDevices = newState.rightDevices?.map { device ->
+                                AvailableDevice(
+                                    address = device.address,
+                                    name = device.name
+                                )
+                            } ?: emptyList()
                         )
                     }
                 }

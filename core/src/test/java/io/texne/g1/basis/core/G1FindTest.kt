@@ -22,12 +22,12 @@ class G1FindTest {
             fakeScanResult("AA:BB:CC:DD:EE:04", "Even G1_7_R_beta"),
         )
 
-        val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
+        val update = G1.collectScanUpdates(results, foundAddresses, foundPairs)
 
-        assertEquals("Expected two completed pairs", 2, completed.size)
+        assertEquals("Expected two completed pairs", 2, update.completedPairs.size)
         assertTrue("No partial pairs should remain", foundPairs.isEmpty())
 
-        val emittedNames = completed.map { pair ->
+        val emittedNames = update.completedPairs.map { pair ->
             val leftName = pair.left?.device?.name
             val rightName = pair.right?.device?.name
             leftName to rightName
@@ -47,6 +47,9 @@ class G1FindTest {
             ),
             foundAddresses
         )
+
+        assertEquals(2, update.newLeftDevices.size)
+        assertEquals(2, update.newRightDevices.size)
     }
 
     @Test
@@ -61,10 +64,10 @@ class G1FindTest {
             fakeScanResult("AA:BB:CC:DD:EE:13", "Even G1_7_R_different"),
         )
 
-        val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
+        val update = G1.collectScanUpdates(results, foundAddresses, foundPairs)
 
-        assertEquals("Expected one completed pair", 1, completed.size)
-        val pair = completed.single()
+        assertEquals("Expected one completed pair", 1, update.completedPairs.size)
+        val pair = update.completedPairs.single()
         assertEquals("Even G1_7_L_CEOCDF", pair.left?.device?.name)
         assertEquals("Even G1_7_R_1D7162", pair.right?.device?.name)
 
@@ -84,6 +87,9 @@ class G1FindTest {
             ),
             foundAddresses
         )
+
+        assertEquals(2, update.newLeftDevices.size)
+        assertEquals(2, update.newRightDevices.size)
     }
 
     private fun fakeScanResult(address: String, name: String): ScanResult {

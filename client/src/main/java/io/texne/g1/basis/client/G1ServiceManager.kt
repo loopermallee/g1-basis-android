@@ -87,7 +87,19 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
                                     else -> GlassesStatus.ERROR
                                 },
                                 batteryPercentage = it.batteryPercentage
-                            ) }
+                            ) },
+                            availableLeftDevices = newState.leftDevices?.map { device ->
+                                AvailableDevice(
+                                    address = device.address,
+                                    name = device.name
+                                )
+                            } ?: emptyList(),
+                            availableRightDevices = newState.rightDevices?.map { device ->
+                                AvailableDevice(
+                                    address = device.address,
+                                    name = device.name
+                                )
+                            } ?: emptyList()
                         )
                     }
                 }
@@ -104,9 +116,10 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
         service?.lookForGlasses()
     }
 
-    suspend fun connect(id: String) = suspendCoroutine<Boolean> { continuation ->
-        service?.connectGlasses(
-            id,
+    suspend fun connect(leftAddress: String, rightAddress: String) = suspendCoroutine<Boolean> { continuation ->
+        service?.connectDevices(
+            leftAddress,
+            rightAddress,
             object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
                 override fun onResult(success: Boolean) {
                     continuation.resume(success)

@@ -30,11 +30,18 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         val batteryPercentage: Int
     )
 
+    data class AvailableDevice(
+        val address: String,
+        val name: String
+    )
+
     enum class ServiceStatus { READY, LOOKING, LOOKED, ERROR }
 
     data class State(
         val status: ServiceStatus,
-        val glasses: List<Glasses>
+        val glasses: List<Glasses>,
+        val availableLeftDevices: List<AvailableDevice> = emptyList(),
+        val availableRightDevices: List<AvailableDevice> = emptyList()
     )
 
     protected val writableState =
