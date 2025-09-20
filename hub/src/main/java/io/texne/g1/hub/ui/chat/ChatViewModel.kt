@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.texne.g1.hub.ai.ChatGptRepository
+import io.texne.g1.hub.ai.ChatGptRepository.ChatCompletionException
 import io.texne.g1.hub.ai.ChatGptRepository.ChatMessageData
 import io.texne.g1.hub.ai.ChatPersona
 import io.texne.g1.hub.ai.ChatPersonas
@@ -112,10 +113,30 @@ class ChatViewModel @Inject constructor(
                     if (history.isNotEmpty()) {
                         history.removeLast()
                     }
+
+                    val warningMessage = when (throwable) {
+                        is ChatCompletionException.MissingApiKey -> WARNING_NO_KEY
+                        is ChatCompletionException.Http -> when (throwable.code) {
+                            401, 403 -> WARNING_NO_KEY
+                            else -> null
+                        }
+                        is ChatCompletionException.Network -> WARNING_CONNECTION
+                        else -> null
+                    }
+
+                    val errorMessage = warningMessage ?: throwable.message ?: "ChatGPT request failed"
+
+                    if (warningMessage != null) {
+                        serviceRepository.displayCenteredOnConnectedGlasses(
+                            listOf(errorMessage),
+                            holdMillis = null
+                        )
+                    }
+
                     _state.update { state ->
                         state.copy(
                             isSending = false,
-                            errorMessage = throwable.message ?: "ChatGPT request failed",
+                            errorMessage = errorMessage,
                             hudStatus = HudStatus.Idle
                         )
                     }
@@ -207,5 +228,7 @@ class ChatViewModel @Inject constructor(
 
     companion object {
         private const val HISTORY_LIMIT = 8
+        private const val WARNING_NO_KEY = "⚠️ No ChatGPT key"
+        private const val WARNING_CONNECTION = "⚠️ Connection error"
     }
 }
