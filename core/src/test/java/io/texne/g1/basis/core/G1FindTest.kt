@@ -51,7 +51,7 @@ class G1FindTest {
     }
 
     @Test
-    fun `pairs without suffix fallback to address for identifiers`() {
+    fun `pairs without suffix share base identifier`() {
         val foundAddresses = mutableListOf<String>()
         val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
 
@@ -68,7 +68,7 @@ class G1FindTest {
         assertTrue("No partial pairs should remain", foundPairs.isEmpty())
 
         val identifiers = completed.map { it.identifier }.toSet()
-        assertEquals("Pairs should have unique identifiers", 2, identifiers.size)
+        assertEquals("Pairs without suffix should share identifier", setOf("Even G1_7"), identifiers)
         assertEquals(
             listOf(
                 "AA:BB:CC:DD:10:01",

@@ -192,19 +192,25 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
             return null
         }
 
-        val prefixSegments = segments.take(sideIndex)
-        val suffixSegments = segments.drop(sideIndex + 1)
-        val identifierSuffix = if (suffixSegments.isNotEmpty()) {
-            suffixSegments.joinToString("_")
-        } else {
-            address.replace(":", "").takeLast(6)
+        val prefixSegments = segments.take(sideIndex).filter { it.isNotEmpty() }
+        val suffixSegments = segments.drop(sideIndex + 1).filter { it.isNotEmpty() }
+
+        if (suffixSegments.isNotEmpty()) {
+            val identifierSuffix = suffixSegments.joinToString("_")
+            val identifierPrefix = prefixSegments.joinToString("_")
+            return listOfNotNull(
+                identifierPrefix.takeIf { it.isNotEmpty() },
+                identifierSuffix.takeIf { it.isNotEmpty() }
+            ).joinToString("_")
         }
 
-        if (identifierSuffix.isEmpty()) {
-            return null
+        val identifierPrefix = prefixSegments.joinToString("_")
+        if (identifierPrefix.isNotEmpty()) {
+            return identifierPrefix
         }
 
-        return (prefixSegments + identifierSuffix).joinToString("_")
+        val fallbackSuffix = address.replace(":", "").takeLast(6)
+        return fallbackSuffix.takeIf { it.isNotEmpty() }
     }
 
     private fun displayNameFromDeviceName(rawName: String): String? {
