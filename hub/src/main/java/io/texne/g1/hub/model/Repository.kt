@@ -53,21 +53,10 @@ class Repository @Inject constructor(
             return false
         }
 
-        return when {
-            sanitizedPages.size == 1 ->
-                service.displayCentered(connected.id, sanitizedPages.first(), holdMillis)
-            holdMillis == null ->
-                displayCenteredPage(connected.id, sanitizedPages, 0)
-            else -> {
-                val duration = holdMillis ?: DEFAULT_PAGE_HOLD_MILLIS
-                val sequence = sanitizedPages.map { lines ->
-                    G1ServiceCommon.TimedFormattedPage(
-                        page = buildCenteredFormattedPage(lines),
-                        milliseconds = duration
-                    )
-                }
-                service.displayFormattedPageSequence(connected.id, sequence)
-            }
+        return if (sanitizedPages.size == 1) {
+            service.displayCentered(connected.id, sanitizedPages.first(), holdMillis)
+        } else {
+            displayCenteredPage(connected.id, sanitizedPages, 0)
         }
     }
 
@@ -101,7 +90,6 @@ class Repository @Inject constructor(
     private lateinit var service: G1ServiceManager
 
     private companion object {
-        private const val DEFAULT_PAGE_HOLD_MILLIS = 4_000L
         private const val MAX_LINES_PER_PAGE = 4
     }
 

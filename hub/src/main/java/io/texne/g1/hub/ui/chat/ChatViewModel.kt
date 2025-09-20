@@ -178,6 +178,18 @@ class ChatViewModel @Inject constructor(
     }
 
     fun onHudPageRequested(pageIndex: Int) {
+        displayInteractiveHudPage(pageIndex)
+    }
+
+    fun onHudGestureForward() {
+        displayInteractiveHudPage(interactiveHudCurrentPageIndex + 1)
+    }
+
+    fun onHudGestureBackward() {
+        displayInteractiveHudPage(interactiveHudCurrentPageIndex - 1)
+    }
+
+    private fun displayInteractiveHudPage(pageIndex: Int) {
         val pages = interactiveHudPages
         if (pages.isEmpty() || pageIndex !in pages.indices || pageIndex == interactiveHudCurrentPageIndex) {
             return
