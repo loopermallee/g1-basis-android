@@ -120,19 +120,25 @@ class G1FindTest {
 
         assertTrue("No completed pairs should be emitted", completed.isEmpty())
 
+        assertEquals(setOf("Even G1_7"), foundPairs.keys)
+
+        val partial = foundPairs["Even G1_7"]
+            ?: throw AssertionError("Expected partial pair for Even G1_7")
+
         assertEquals(
-            setOf(
-                "Even G1_7_CEOCDF",
-                "Even G1_7_1D7162",
-                "Even G1_7_unpaired",
-                "Even G1_7_different",
+            listOf(
+                "Even G1_7_L_CEOCDF",
+                "Even G1_7_L_unpaired",
             ),
-            foundPairs.keys
+            partial.left.map { it.result.device.name }
         )
-        assertEquals("Even G1_7_L_CEOCDF", foundPairs["Even G1_7_CEOCDF"]?.left?.device?.name)
-        assertEquals("Even G1_7_R_1D7162", foundPairs["Even G1_7_1D7162"]?.right?.device?.name)
-        assertEquals("Even G1_7_L_unpaired", foundPairs["Even G1_7_unpaired"]?.left?.device?.name)
-        assertEquals("Even G1_7_R_different", foundPairs["Even G1_7_different"]?.right?.device?.name)
+        assertEquals(
+            listOf(
+                "Even G1_7_R_1D7162",
+                "Even G1_7_R_different",
+            ),
+            partial.right.map { it.result.device.name }
+        )
 
         assertEquals(
             listOf(
@@ -198,7 +204,7 @@ class G1FindTest {
             setOf(G1Gesture.Side.RIGHT)
         )
         assertTrue(completed.isEmpty())
-        assertEquals(setOf("Even G1_7_delta"), foundPairs.keys)
+        assertEquals(setOf("Even G1_7"), foundPairs.keys)
 
         completed = G1.collectCompletePairs(
             listOf(left),

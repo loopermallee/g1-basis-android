@@ -18,12 +18,13 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.Locale
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanResult
@@ -254,9 +255,19 @@ class G1 {
     // find devices --------------------------------------------------------------------------------
 
     companion object {
+        private data class PairingTokens(
+            val base: String,
+            val suffix: String?
+        )
+
+        private data class PairingCandidate(
+            val suffix: String?,
+            val result: ScanResult
+        )
+
         internal data class FoundPair(
-            val left: ScanResult? = null,
-            val right: ScanResult? = null
+            val left: MutableList<PairingCandidate> = mutableListOf(),
+            val right: MutableList<PairingCandidate> = mutableListOf()
         )
 
         internal data class G1DevicePair(
@@ -265,30 +276,70 @@ class G1 {
             val right: ScanResult
         )
 
-        private fun pairingIdentifier(result: ScanResult): String? {
+        private fun pairingTokens(result: ScanResult): PairingTokens? {
             val name = result.device.name ?: return null
-            val segments = name.split("_")
-            val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
+            val segments = name
+                .split("_")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+            val sideIndex = segments.indexOfFirst { segment ->
+                val normalized = segment.uppercase(Locale.ROOT)
+                normalized == "L" || normalized == "R" || normalized == "LEFT" || normalized == "RIGHT"
+            }
             if (sideIndex == -1) {
                 return null
             }
 
-            val prefixSegments = segments.take(sideIndex).filter { it.isNotEmpty() }
-            val suffixSegments = segments.drop(sideIndex + 1).filter { it.isNotEmpty() }
+            val prefix = segments.take(sideIndex).joinToString("_").ifEmpty { null }
+            val suffix = segments.drop(sideIndex + 1).joinToString("_").ifEmpty { null }
 
-            val prefix = prefixSegments.joinToString("_").ifEmpty { null }
-            val suffix = suffixSegments.joinToString("_").ifEmpty { null }
+            val base = prefix ?: result.device.address.replace(":", "")
 
-            return when {
-                prefix != null && suffix != null -> "${prefix}_${suffix}"
-                prefix != null -> prefix
-                suffix != null -> suffix
-                else -> result.device.address.replace(":", "")
-            }
+            return PairingTokens(base, suffix)
         }
 
-        private fun String.hasSideToken(side: String): Boolean =
-            this.split("_").any { it == side }
+        private fun MutableList<PairingCandidate>.removeMatching(suffix: String?): PairingCandidate? {
+            if (isEmpty()) {
+                return null
+            }
+
+            val normalizedSuffix = suffix?.lowercase(Locale.ROOT)
+            val exactIndex = if (normalizedSuffix != null) {
+                indexOfFirst { candidate ->
+                    candidate.suffix?.lowercase(Locale.ROOT) == normalizedSuffix
+                }
+            } else {
+                indexOfFirst { candidate -> candidate.suffix == null }
+            }
+
+            if (exactIndex != -1) {
+                return removeAt(exactIndex)
+            }
+
+            if (normalizedSuffix == null) {
+                return removeAt(0)
+            }
+
+            val nullIndex = indexOfFirst { candidate -> candidate.suffix == null }
+            if (nullIndex != -1) {
+                return removeAt(nullIndex)
+            }
+
+            return null
+        }
+
+        private fun String.hasSideToken(side: String): Boolean {
+            val target = side.uppercase(Locale.ROOT)
+            return this.split("_")
+                .map { it.trim().uppercase(Locale.ROOT) }
+                .any { token ->
+                    when (target) {
+                        "L" -> token == "L" || token == "LEFT"
+                        "R" -> token == "R" || token == "RIGHT"
+                        else -> token == target
+                    }
+                }
+        }
 
         private fun ScanResult.isLeftDevice(): Boolean =
             this.device.name?.hasSideToken("L") == true
@@ -325,7 +376,8 @@ class G1 {
                         return@forEach
                     }
 
-                    val identifier = pairingIdentifier(result) ?: return@forEach
+                    val tokens = pairingTokens(result) ?: return@forEach
+                    val identifier = tokens.base
                     val side = result.side() ?: return@forEach
 
                     if (sideFilter != null && identifier !in trackedIdentifiers) {
@@ -340,22 +392,36 @@ class G1 {
 
                     foundAddresses.add(address)
 
-                    val existing = foundPairs[identifier]
-                    val resolvedLeft = when {
-                        result.isLeftDevice() -> result
-                        else -> existing?.left
-                    }
-                    val resolvedRight = when {
-                        result.isRightDevice() -> result
-                        else -> existing?.right
+                    val bucket = foundPairs.getOrPut(identifier) { FoundPair() }
+                    val candidate = PairingCandidate(tokens.suffix, result)
+
+                    val completedPair = when (side) {
+                        G1Gesture.Side.LEFT -> {
+                            val match = bucket.right.removeMatching(tokens.suffix)
+                            if (match != null) {
+                                G1DevicePair(identifier, result, match.result)
+                            } else {
+                                bucket.left.add(candidate)
+                                null
+                            }
+                        }
+                        G1Gesture.Side.RIGHT -> {
+                            val match = bucket.left.removeMatching(tokens.suffix)
+                            if (match != null) {
+                                G1DevicePair(identifier, match.result, result)
+                            } else {
+                                bucket.right.add(candidate)
+                                null
+                            }
+                        }
                     }
 
-                    if (resolvedLeft != null && resolvedRight != null) {
-                        foundPairs.remove(identifier)
-                        trackedIdentifiers.remove(identifier)
-                        completedPairs.add(G1DevicePair(identifier, resolvedLeft, resolvedRight))
-                    } else {
-                        foundPairs[identifier] = FoundPair(resolvedLeft, resolvedRight)
+                    if (completedPair != null) {
+                        if (bucket.left.isEmpty() && bucket.right.isEmpty()) {
+                            foundPairs.remove(identifier)
+                            trackedIdentifiers.remove(identifier)
+                        }
+                        completedPairs.add(completedPair)
                     }
                 }
 
