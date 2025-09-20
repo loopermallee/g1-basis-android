@@ -24,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -36,6 +38,9 @@ import androidx.compose.ui.unit.sp
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.R
 import io.texne.g1.hub.model.Repository.GlassesSnapshot
+import io.texne.g1.hub.ui.ApplicationViewModel
+import java.text.DateFormat
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,8 +48,11 @@ fun ScannerScreen(
     scanning: Boolean,
     error: Boolean,
     nearbyGlasses: List<GlassesSnapshot>?,
+    retryCountdowns: Map<String, ApplicationViewModel.RetryCountdown>,
     scan: () -> Unit,
-    connect: (id: String) -> Unit
+    connect: (id: String) -> Unit,
+    cancelRetry: (id: String) -> Unit,
+    retryNow: (id: String) -> Unit
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
 
@@ -65,8 +73,11 @@ fun ScannerScreen(
                     items(nearbyGlasses!!.size) { index ->
                         val glasses = nearbyGlasses[index]
                         GlassesItem(
-                            glasses,
-                            { connect(glasses.id) }
+                            glasses = glasses,
+                            retryCountdown = retryCountdowns[glasses.id],
+                            connect = { connect(glasses.id) },
+                            cancelRetry = { cancelRetry(glasses.id) },
+                            retryNow = { retryNow(glasses.id) }
                         )
                     }
                 }
@@ -111,8 +122,17 @@ fun ScannerScreen(
 @Composable
 fun GlassesItem(
     glasses: GlassesSnapshot,
-    connect: () -> Unit
+    retryCountdown: ApplicationViewModel.RetryCountdown?,
+    connect: () -> Unit,
+    cancelRetry: () -> Unit,
+    retryNow: () -> Unit
 ) {
+    LaunchedEffect(retryCountdown?.secondsRemaining) {
+        if (retryCountdown?.secondsRemaining == 0) {
+            connect()
+        }
+    }
+
     Box(
         Modifier.fillMaxWidth()
             .padding(horizontal = 16.dp)
@@ -149,6 +169,50 @@ fun GlassesItem(
                                 CircularProgressIndicator(
                                     color = Color.Black
                                 )
+                            }
+
+                            retryCountdown != null -> {
+                                val nextAttemptText = remember(retryCountdown.nextAttemptAtMillis) {
+                                    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(retryCountdown.nextAttemptAtMillis))
+                                }
+                                Column(
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Retrying in ${retryCountdown.secondsRemaining}s",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Next attempt at $nextAttemptText",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Button(
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(224, 224, 224, 255),
+                                                contentColor = Color.Black
+                                            ),
+                                            onClick = cancelRetry
+                                        ) {
+                                            Text("CANCEL")
+                                        }
+                                        Button(
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Color(6, 64, 43, 255),
+                                                contentColor = Color.White
+                                            ),
+                                            onClick = retryNow
+                                        ) {
+                                            Text("RETRY NOW")
+                                        }
+                                    }
+                                }
                             }
 
                             glasses.status != G1ServiceCommon.GlassesStatus.CONNECTED -> {
