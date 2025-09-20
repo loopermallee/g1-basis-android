@@ -36,7 +36,7 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `hud page requests trigger repository when interactive pages available`() = runTest {
+    fun `hud forward gesture triggers repository when interactive pages available`() = runTest {
         val viewModel = ChatViewModel(chatRepository, serviceRepository)
         val persona = ChatPersona(
             id = "todo",
@@ -47,7 +47,7 @@ class ChatViewModelTest {
         )
         viewModel.onPersonaSelected(persona)
 
-        val response = "Item one. Item two. Item three. Item four. Item five. Item six."
+        val response = List(12) { index -> "Task ${index + 1}" }.joinToString(separator = ". ")
         coEvery { chatRepository.requestChatCompletion(persona, any()) } returns Result.success(response)
         coEvery { serviceRepository.displayCenteredOnConnectedGlasses(any(), any()) } returns true
         coEvery { serviceRepository.displayCenteredPageOnConnectedGlasses(any(), any()) } returns true
@@ -55,7 +55,7 @@ class ChatViewModelTest {
         viewModel.sendPrompt("show my todo list")
         advanceUntilIdle()
 
-        viewModel.onHudPageRequested(1)
+        viewModel.onHudGestureForward()
         advanceUntilIdle()
 
         coVerify(exactly = 1) {
@@ -64,10 +64,42 @@ class ChatViewModelTest {
     }
 
     @Test
-    fun `hud page requests ignored when no pages cached`() = runTest {
+    fun `hud backward gesture displays previous page when available`() = runTest {
+        val viewModel = ChatViewModel(chatRepository, serviceRepository)
+        val persona = ChatPersona(
+            id = "todo",
+            displayName = "Todo",
+            description = "",
+            systemPrompt = "",
+            hudHoldMillis = null
+        )
+        viewModel.onPersonaSelected(persona)
+
+        val response = List(10) { index -> "Task ${index + 1}" }.joinToString(separator = ". ")
+        coEvery { chatRepository.requestChatCompletion(persona, any()) } returns Result.success(response)
+        coEvery { serviceRepository.displayCenteredOnConnectedGlasses(any(), any()) } returns true
+        coEvery { serviceRepository.displayCenteredPageOnConnectedGlasses(any(), any()) } returns true
+
+        viewModel.sendPrompt("show my todo list")
+        advanceUntilIdle()
+
+        viewModel.onHudGestureForward()
+        advanceUntilIdle()
+
+        viewModel.onHudGestureBackward()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            serviceRepository.displayCenteredPageOnConnectedGlasses(match { it.size > 1 }, 0)
+        }
+    }
+
+    @Test
+    fun `hud gestures ignored when no pages cached`() = runTest {
         val viewModel = ChatViewModel(chatRepository, serviceRepository)
 
-        viewModel.onHudPageRequested(0)
+        viewModel.onHudGestureForward()
+        viewModel.onHudGestureBackward()
         advanceUntilIdle()
 
         coVerify(exactly = 0) { serviceRepository.displayCenteredPageOnConnectedGlasses(any(), any()) }

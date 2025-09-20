@@ -59,18 +59,17 @@ class RepositoryTest {
     }
 
     @Test
-    fun `multi-page responses with hold still schedule timed sequence`() = runTest {
+    fun `multi-page responses ignore holdMillis and display first page immediately`() = runTest {
         val pages = listOf(listOf("Task 1"), listOf("Task 2"))
-        val sequenceSlot = slot<List<G1ServiceCommon.TimedFormattedPage>>()
-        coEvery { service.displayFormattedPageSequence(connectedGlasses.id, capture(sequenceSlot)) } returns true
+        val formattedPage = slot<G1ServiceCommon.FormattedPage>()
+        coEvery { service.displayFormattedPage(connectedGlasses.id, capture(formattedPage)) } returns true
 
         val result = repository.displayCenteredOnConnectedGlasses(pages, holdMillis = 2_500L)
 
         assertTrue(result)
-        coVerify(exactly = 1) { service.displayFormattedPageSequence(connectedGlasses.id, any()) }
-        coVerify(exactly = 0) { service.displayFormattedPage(connectedGlasses.id, any()) }
-        assertEquals(2, sequenceSlot.captured.size)
-        assertTrue(sequenceSlot.captured.all { it.milliseconds == 2_500L })
+        coVerify(exactly = 1) { service.displayFormattedPage(connectedGlasses.id, any()) }
+        coVerify(exactly = 0) { service.displayFormattedPageSequence(any(), any()) }
+        assertEquals(pages.first(), formattedPage.captured.lines.map { it.text })
     }
 
     @Test
