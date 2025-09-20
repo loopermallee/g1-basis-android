@@ -273,20 +273,18 @@ class G1 {
                 return null
             }
 
-            val prefixSegments = segments.take(sideIndex)
-            val suffixSegments = segments.drop(sideIndex + 1)
+            val prefixSegments = segments.take(sideIndex).filter { it.isNotEmpty() }
+            val suffixSegments = segments.drop(sideIndex + 1).filter { it.isNotEmpty() }
 
-            val identifierSuffix = if (suffixSegments.isNotEmpty()) {
-                suffixSegments.joinToString("_")
-            } else {
-                result.device.address.replace(":", "").takeLast(6)
+            val prefix = prefixSegments.joinToString("_").ifEmpty { null }
+            val suffix = suffixSegments.joinToString("_").ifEmpty { null }
+
+            return when {
+                prefix != null && suffix != null -> "${prefix}_${suffix}"
+                prefix != null -> prefix
+                suffix != null -> suffix
+                else -> result.device.address.replace(":", "")
             }
-
-            if (identifierSuffix.isEmpty()) {
-                return null
-            }
-
-            return (prefixSegments + identifierSuffix).joinToString("_")
         }
 
         private fun String.hasSideToken(side: String): Boolean =

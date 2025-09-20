@@ -51,7 +51,7 @@ class G1FindTest {
     }
 
     @Test
-    fun `pairs without suffix fallback to address for identifiers`() {
+    fun `pairs without suffix share base identifier`() {
         val foundAddresses = mutableListOf<String>()
         val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
 
@@ -67,14 +67,38 @@ class G1FindTest {
         assertEquals("Expected two completed pairs", 2, completed.size)
         assertTrue("No partial pairs should remain", foundPairs.isEmpty())
 
-        val identifiers = completed.map { it.identifier }.toSet()
-        assertEquals("Pairs should have unique identifiers", 2, identifiers.size)
+        val identifiers = completed.map { it.identifier }
+        assertEquals(listOf("Even G1_7", "Even G1_7"), identifiers)
         assertEquals(
             listOf(
                 "AA:BB:CC:DD:10:01",
                 "AA:BB:CC:DD:10:02",
                 "AA:BB:CC:DD:10:03",
                 "AA:BB:CC:DD:10:04",
+            ),
+            foundAddresses
+        )
+    }
+
+    @Test
+    fun `pairs without numeric segment are grouped`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+
+        val results = listOf(
+            fakeScanResult("AA:BB:CC:00:01", "Even G1_L"),
+            fakeScanResult("AA:BB:CC:00:02", "Even G1_R"),
+        )
+
+        val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
+
+        assertEquals(1, completed.size)
+        assertTrue(foundPairs.isEmpty())
+        assertEquals("Even G1", completed.first().identifier)
+        assertEquals(
+            listOf(
+                "AA:BB:CC:00:01",
+                "AA:BB:CC:00:02",
             ),
             foundAddresses
         )
