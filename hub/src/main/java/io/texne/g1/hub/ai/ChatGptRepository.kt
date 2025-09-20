@@ -1,5 +1,6 @@
 package io.texne.g1.hub.ai
 
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -33,7 +34,7 @@ class ChatGptRepository @Inject constructor(
         history: List<ChatMessageData>
     ): Result<String> = withContext(Dispatchers.IO) {
         val apiKey = preferences.getApiKey()
-            ?: return@withContext Result.failure(IllegalStateException("Missing ChatGPT API key"))
+            ?: return@withContext Result.failure(ChatCompletionException.MissingApiKey)
 
         val messages = JSONArray().apply {
             put(JSONObject().apply {
@@ -55,56 +56,78 @@ class ChatGptRepository @Inject constructor(
             put("messages", messages)
         }
 
-        val requestBody = requestJson
-            .toString()
-            .toRequestBody("application/json; charset=utf-8".toMediaType())
+        val requestPayload = requestJson.toString()
 
-        val request = Request.Builder()
-            .url(ENDPOINT)
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("Content-Type", "application/json")
-            .post(requestBody)
-            .build()
+        fun executeRequest(): String {
+            val requestBody = requestPayload.toRequestBody(JSON_MEDIA_TYPE)
+            val request = Request.Builder()
+                .url(ENDPOINT)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Content-Type", "application/json")
+                .post(requestBody)
+                .build()
 
-        try {
-            httpClient.newCall(request).execute().use { response ->
-                val body = response.body?.string()
-                    ?: return@withContext Result.failure(IllegalStateException("Empty response from ChatGPT"))
+            try {
+                httpClient.newCall(request).execute().use { response ->
+                    val body = response.body?.string()
+                        ?: throw ChatCompletionException.EmptyResponse
 
-                if (!response.isSuccessful) {
-                    val errorMessage = runCatching {
-                        JSONObject(body).optJSONObject("error")?.optString("message")
+                    if (!response.isSuccessful) {
+                        val errorMessage = runCatching {
+                            JSONObject(body).optJSONObject("error")?.optString("message")
+                        }.getOrNull()
+
+                        throw ChatCompletionException.Http(response.code, errorMessage)
+                    }
+
+                    val content = runCatching {
+                        val json = JSONObject(body)
+                        val choices = json.optJSONArray("choices")
+                        if (choices != null && choices.length() > 0) {
+                            val first = choices.getJSONObject(0)
+                            first.optJSONObject("message")?.optString("content")
+                        } else {
+                            null
+                        }
                     }.getOrNull()
 
-                    return@withContext Result.failure(
-                        IllegalStateException(errorMessage ?: "ChatGPT request failed with ${response.code}")
-                    )
-                }
-
-                val content = runCatching {
-                    val json = JSONObject(body)
-                    val choices = json.optJSONArray("choices")
-                    if (choices != null && choices.length() > 0) {
-                        val first = choices.getJSONObject(0)
-                        first.optJSONObject("message")?.optString("content")
-                    } else {
-                        null
+                    if (content.isNullOrBlank()) {
+                        throw ChatCompletionException.NoContent
                     }
-                }.getOrNull()
 
-                if (content.isNullOrBlank()) {
-                    return@withContext Result.failure(IllegalStateException("ChatGPT response did not contain any content"))
+                    return content.trim()
                 }
-
-                Result.success(content.trim())
+            } catch (ioException: IOException) {
+                throw ChatCompletionException.Network(ioException)
             }
-        } catch (throwable: Throwable) {
-            Result.failure(throwable)
         }
+
+        runCatching { executeRequest() }
+            .recoverCatching { throwable ->
+                if (throwable is ChatCompletionException.Network) {
+                    executeRequest()
+                } else {
+                    throw throwable
+                }
+            }
+    }
+
+    sealed class ChatCompletionException(
+        message: String,
+        cause: Throwable? = null
+    ) : Exception(message, cause) {
+        data object MissingApiKey : ChatCompletionException("Missing ChatGPT API key")
+        class Network(cause: Throwable) : ChatCompletionException("Network error", cause)
+        class Http(val code: Int, private val errorMessage: String?) : ChatCompletionException(
+            errorMessage ?: "ChatGPT request failed with $code"
+        )
+        data object EmptyResponse : ChatCompletionException("Empty response from ChatGPT")
+        data object NoContent : ChatCompletionException("ChatGPT response did not contain any content")
     }
 
     companion object {
         private const val ENDPOINT = "https://api.openai.com/v1/chat/completions"
         private const val DEFAULT_MODEL = "gpt-4o-mini"
+        private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     }
 }
