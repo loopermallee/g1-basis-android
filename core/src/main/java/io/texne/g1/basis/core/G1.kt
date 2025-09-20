@@ -278,40 +278,65 @@ class G1 {
         private fun ScanResult.isRightDevice(): Boolean =
             this.device.name?.hasSideToken("R") == true
 
+        private fun ScanResult.side(): G1Gesture.Side? = when {
+            isLeftDevice() -> G1Gesture.Side.LEFT
+            isRightDevice() -> G1Gesture.Side.RIGHT
+            else -> null
+        }
+
         internal fun collectCompletePairs(
             rawResults: List<ScanResult?>,
             foundAddresses: MutableList<String>,
-            foundPairs: MutableMap<String, FoundPair>
+            foundPairs: MutableMap<String, FoundPair>,
+            sideFilter: Set<G1Gesture.Side>? = null
         ): List<G1DevicePair> {
             val completedPairs = mutableListOf<G1DevicePair>()
+            val seenAddresses = mutableSetOf<String>()
+            val trackedIdentifiers = mutableSetOf<String>().apply { addAll(foundPairs.keys) }
+
             rawResults
                 .asSequence()
                 .filterNotNull()
-                .filter { result ->
-                    result.device.name?.startsWith(DEVICE_NAME_PREFIX) == true &&
-                        foundAddresses.contains(result.device.address).not()
-                }
-                .mapNotNull { result ->
-                    val identifier = pairingIdentifier(result) ?: return@mapNotNull null
-                    identifier to result
-                }
-                .distinctBy { (_, result) -> result.device.address }
-                .groupBy({ (identifier, _) -> identifier }, { (_, result) -> result })
-                .forEach { (identifier, grouped) ->
-                    grouped.forEach { found ->
-                        foundAddresses.add(found.device.address)
+                .forEach { result ->
+                    val name = result.device.name ?: return@forEach
+                    val address = result.device.address
+                    if (!name.startsWith(DEVICE_NAME_PREFIX)) {
+                        return@forEach
+                    }
+                    if (!seenAddresses.add(address) || foundAddresses.contains(address)) {
+                        return@forEach
                     }
 
+                    val identifier = pairingIdentifier(result) ?: return@forEach
+                    val side = result.side() ?: return@forEach
+
+                    if (sideFilter != null && identifier !in trackedIdentifiers) {
+                        if (sideFilter.contains(side)) {
+                            trackedIdentifiers.add(identifier)
+                        } else {
+                            return@forEach
+                        }
+                    } else {
+                        trackedIdentifiers.add(identifier)
+                    }
+
+                    foundAddresses.add(address)
+
                     val existing = foundPairs[identifier]
-                    val candidateLeft = grouped.firstOrNull { it.isLeftDevice() }
-                    val candidateRight = grouped.firstOrNull { it.isRightDevice() }
-                    val resolvedLeft = existing?.left ?: candidateLeft
-                    val resolvedRight = existing?.right ?: candidateRight
+                    val resolvedLeft = when {
+                        result.isLeftDevice() -> result
+                        else -> existing?.left
+                    }
+                    val resolvedRight = when {
+                        result.isRightDevice() -> result
+                        else -> existing?.right
+                    }
 
                     if (resolvedLeft != null && resolvedRight != null) {
                         foundPairs.remove(identifier)
+                        trackedIdentifiers.remove(identifier)
                         completedPairs.add(G1DevicePair(identifier, resolvedLeft, resolvedRight))
-                    } else if (resolvedLeft != null || resolvedRight != null) {
+                    } else {
                         foundPairs[identifier] = FoundPair(resolvedLeft, resolvedRight)
                     }
                 }
@@ -319,31 +344,42 @@ class G1 {
             return completedPairs
         }
 
-        fun find(duration: Duration) = callbackFlow<G1?> {
+        fun find(
+            duration: Duration,
+            sideFilter: Set<G1Gesture.Side>? = null
+        ) = callbackFlow<G1?> {
             val scanner = BluetoothLeScannerCompat.getScanner()
             val settings = ScanSettings.Builder()
                 .setLegacy(false)
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .setReportDelay(5000)
-                .setUseHardwareFilteringIfSupported(true)
+                .setReportDelay(0)
                 .build()
             val foundAddresses = mutableListOf<String>()
             val foundPairs = mutableMapOf<String, FoundPair>()
-            val callback = object: ScanCallback() {
-                @SuppressLint("MissingPermission")
-                override fun onBatchScanResults(results: List<ScanResult?>) {
-                    collectCompletePairs(results, foundAddresses, foundPairs)
-                        .forEach { pair ->
-                            val left = pair.left
-                            val right = pair.right
-                            trySendBlocking(G1(
-                                G1Device(right, G1Gesture.Side.RIGHT),
-                                G1Device(left, G1Gesture.Side.LEFT)
-                            ))
-                        }
+            fun handleResults(results: List<ScanResult?>) {
+                collectCompletePairs(results, foundAddresses, foundPairs, sideFilter)
+                    .forEach { pair ->
+                        val left = pair.left
+                        val right = pair.right
+                        trySendBlocking(G1(
+                            G1Device(right, G1Gesture.Side.RIGHT),
+                            G1Device(left, G1Gesture.Side.LEFT)
+                        ))
                     }
             }
-            scanner.startScan(listOf(), settings, callback)
+
+            val callback = object: ScanCallback() {
+                @SuppressLint("MissingPermission")
+                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    handleResults(listOf(result))
+                }
+
+                @SuppressLint("MissingPermission")
+                override fun onBatchScanResults(results: List<ScanResult?>) {
+                    handleResults(results)
+                }
+            }
+            scanner.startScan(emptyList(), settings, callback)
             Handler(Looper.getMainLooper()).postDelayed({
                 scanner.stopScan(callback)
                 trySendBlocking(null)

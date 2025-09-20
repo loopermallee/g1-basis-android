@@ -8,10 +8,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -33,9 +35,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
+import java.util.Locale
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
 
@@ -105,6 +108,10 @@ private fun G1Service.InternalState.toState(): G1ServiceState {
 
 class G1Service: Service() {
 
+    companion object {
+        const val EXTRA_SIDE_FILTER = "io.texne.g1.basis.service.EXTRA_SIDE_FILTER"
+    }
+
     enum class ServiceStatus {
         READY,
         LOOKING,
@@ -141,6 +148,8 @@ class G1Service: Service() {
     private val LAST_CONNECTED_ID = stringPreferencesKey("last_connected_id")
     @Volatile
     private var cachedLastConnectedId: String? = null
+    @Volatile
+    private var sideMarkerFilter: Set<G1Gesture.Side>? = null
 
     private suspend fun readLastConnectedId(): String? {
         val cached = cachedLastConnectedId
@@ -263,6 +272,13 @@ class G1Service: Service() {
             }
             withPermissions {
                 coroutineScope.launch {
+                    val filterSnapshot = sideMarkerFilter?.toSet()
+                    if (filterSnapshot != null) {
+                        Log.i(
+                            "G1Service",
+                            "Scanning with side marker filter: ${filterSnapshot.joinToString { it.name }}"
+                        )
+                    }
                     // clear all glasses except connected
                     state.value = state.value.copy(
                         status = ServiceStatus.LOOKING,
@@ -280,7 +296,7 @@ class G1Service: Service() {
                     }
 
                     try {
-                        G1.find(15.toDuration(DurationUnit.SECONDS)).collect { found ->
+                        G1.find(15.toDuration(DurationUnit.SECONDS), filterSnapshot).collect { found ->
                             if(found != null) {
                                 Log.d("G1Service", "SCANNING FOUND = ${found}")
 
@@ -414,26 +430,88 @@ class G1Service: Service() {
 
     // permissions infrastructure ------------------------------------------------------------------
 
+    private fun requiredPermissions(): Array<String> {
+        val permissions = mutableSetOf(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions.add(Manifest.permission.BLUETOOTH_CONNECT)
+            permissions.add(Manifest.permission.BLUETOOTH_SCAN)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        return permissions.toTypedArray()
+    }
+
+    private fun hasAllPermissions(permissions: Array<String>): Boolean =
+        permissions.all { permission ->
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+        }
+
     private fun withPermissions(block: () -> Unit) {
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Permissions.check(this@G1Service,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) else arrayOf(
-                    Manifest.permission.BLUETOOTH_CONNECT,
-                    Manifest.permission.BLUETOOTH_SCAN,
-                ),
-                "Please provide the permissions so the service can interact with the G1 G1Glasses",
-                Permissions.Options().setCreateNewTask(true),
-                object: PermissionHandler() {
-                    override fun onGranted() {
-                        block()
-                    }
-                })
-        } else {
+        val permissions = requiredPermissions()
+        if (permissions.isEmpty()) {
             block()
+            return
+        }
+
+        if (hasAllPermissions(permissions)) {
+            block()
+            return
+        }
+
+        Permissions.check(
+            this@G1Service,
+            permissions,
+            "Please provide Bluetooth and location access so the service can interact with the G1 glasses",
+            Permissions.Options().setCreateNewTask(true),
+            object: PermissionHandler() {
+                override fun onGranted() {
+                    block()
+                }
+            }
+        )
+    }
+
+    private fun parseSideFilterTokens(rawTokens: List<String>?): Set<G1Gesture.Side>? {
+        if (rawTokens.isNullOrEmpty()) {
+            return null
+        }
+
+        val sides = rawTokens
+            .flatMap { token -> token.split(',', ';').map { it.trim() } }
+            .filter { it.isNotEmpty() }
+            .mapNotNull { token ->
+                when (token.uppercase(Locale.ROOT)) {
+                    "L", "LEFT" -> G1Gesture.Side.LEFT
+                    "R", "RIGHT" -> G1Gesture.Side.RIGHT
+                    else -> null
+                }
+            }
+            .toSet()
+
+        return sides.takeIf { it.isNotEmpty() }
+    }
+
+    private fun updateSideMarkerFilter(intent: Intent?) {
+        if (intent == null || !intent.hasExtra(EXTRA_SIDE_FILTER)) {
+            return
+        }
+
+        val tokens = intent.getStringArrayExtra(EXTRA_SIDE_FILTER)?.toList()
+            ?: intent.getStringArrayListExtra(EXTRA_SIDE_FILTER)
+            ?: intent.getStringExtra(EXTRA_SIDE_FILTER)?.let { listOf(it) }
+
+        val parsed = parseSideFilterTokens(tokens)
+        sideMarkerFilter = parsed
+        if (parsed == null) {
+            Log.i("G1Service", "Side marker filter cleared")
+        } else {
+            Log.i(
+                "G1Service",
+                "Side marker filter set to ${parsed.joinToString { it.name }}"
+            )
         }
     }
 
@@ -484,6 +562,10 @@ class G1Service: Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        updateSideMarkerFilter(intent)
+        if (intent?.hasExtra(EXTRA_SIDE_FILTER) == true && state.value.status != ServiceStatus.LOOKING) {
+            binder.lookForGlasses()
+        }
         return START_STICKY
     }
 
@@ -494,6 +576,7 @@ class G1Service: Service() {
             applicationContext.startService(Intent(applicationContext, G1Service::class.java))
         }
 
+        updateSideMarkerFilter(intent)
         return when(intent?.action) {
             "io.texne.g1.basis.service.protocol.IG1Service" -> binder
             "io.texne.g1.basis.service.protocol.IG1ServiceClient" -> clientBinder

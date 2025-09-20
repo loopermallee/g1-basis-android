@@ -3,6 +3,7 @@ package io.texne.g1.basis.core
 import android.bluetooth.BluetoothDevice
 import io.mockk.every
 import io.mockk.mockk
+import io.texne.g1.basis.core.G1Gesture
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -85,6 +86,78 @@ class G1FindTest {
                 "AA:BB:CC:DD:EE:11",
                 "AA:BB:CC:DD:EE:12",
                 "AA:BB:CC:DD:EE:13",
+            ),
+            foundAddresses
+        )
+    }
+
+    @Test
+    fun `filtering for left side still produces pairs`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+
+        val results = listOf(
+            fakeScanResult("AA:BB:CC:DD:EE:20", "Even G1_7_L_gamma"),
+            fakeScanResult("AA:BB:CC:DD:EE:21", "Even G1_7_R_gamma"),
+        )
+
+        val completed = G1.collectCompletePairs(
+            results,
+            foundAddresses,
+            foundPairs,
+            setOf(G1Gesture.Side.LEFT)
+        )
+
+        assertEquals(1, completed.size)
+        assertTrue(foundPairs.isEmpty())
+        assertEquals(
+            listOf(
+                "AA:BB:CC:DD:EE:20",
+                "AA:BB:CC:DD:EE:21",
+            ),
+            foundAddresses
+        )
+    }
+
+    @Test
+    fun `filtering for right side tracks until left reappears`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+
+        val left = fakeScanResult("AA:BB:CC:DD:EE:30", "Even G1_7_L_delta")
+        val right = fakeScanResult("AA:BB:CC:DD:EE:31", "Even G1_7_R_delta")
+
+        var completed = G1.collectCompletePairs(
+            listOf(left),
+            foundAddresses,
+            foundPairs,
+            setOf(G1Gesture.Side.RIGHT)
+        )
+        assertTrue(completed.isEmpty())
+        assertTrue(foundPairs.isEmpty())
+        assertTrue(foundAddresses.isEmpty())
+
+        completed = G1.collectCompletePairs(
+            listOf(right),
+            foundAddresses,
+            foundPairs,
+            setOf(G1Gesture.Side.RIGHT)
+        )
+        assertTrue(completed.isEmpty())
+        assertEquals(setOf("Even G1_7_delta"), foundPairs.keys)
+
+        completed = G1.collectCompletePairs(
+            listOf(left),
+            foundAddresses,
+            foundPairs,
+            setOf(G1Gesture.Side.RIGHT)
+        )
+        assertEquals(1, completed.size)
+        assertTrue(foundPairs.isEmpty())
+        assertEquals(
+            listOf(
+                "AA:BB:CC:DD:EE:31",
+                "AA:BB:CC:DD:EE:30",
             ),
             foundAddresses
         )
