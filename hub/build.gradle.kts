@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.hilt.navigation.compose)
     implementation(project(":service"))
     implementation(project(":client"))
+    implementation(project(":aidl"))
     implementation(libs.androidx.security.crypto)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
