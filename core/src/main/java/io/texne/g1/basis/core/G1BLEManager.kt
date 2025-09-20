@@ -25,6 +25,18 @@ private fun Data.toByteArray(): ByteArray {
     return array
 }
 
+private fun BluetoothGattCharacteristic.supportsWriting(): Boolean =
+    properties and (
+        BluetoothGattCharacteristic.PROPERTY_WRITE or
+            BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE
+        ) != 0
+
+private fun BluetoothGattCharacteristic.supportsNotifications(): Boolean =
+    properties and (
+        BluetoothGattCharacteristic.PROPERTY_NOTIFY or
+            BluetoothGattCharacteristic.PROPERTY_INDICATE
+        ) != 0
+
 @SuppressLint("MissingPermission")
 internal class G1BLEManager(private val deviceName: String, context: Context, private val coroutineScope: CoroutineScope): BleManager(context) {
 
@@ -72,8 +84,14 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
                 writableConnectionState.value = G1.ConnectionState.DISCONNECTED
             }
         })
+        val notificationCharacteristic = readCharacteristic
+        if (notificationCharacteristic == null) {
+            Log.w("G1BLEManager", "Read characteristic unavailable; skipping notification subscription")
+            return
+        }
+
         setNotificationCallback(
-            readCharacteristic
+            notificationCharacteristic
         ).with { device, data ->
             val split = device.name.split('_')
             val packet = IncomingPacket.fromBytes(data.toByteArray())
@@ -86,7 +104,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
                 }
             }
         }
-        enableNotifications(readCharacteristic)
+        enableNotifications(notificationCharacteristic)
     }
 
     //
@@ -130,17 +148,34 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
         val service = gatt.getService(UUID.fromString(UART_SERVICE_UUID))
         if(service != null) {
             val write = service.getCharacteristic(UUID.fromString(UART_WRITE_CHARACTERISTIC_UUID))
-            if(write != null) {
-                val read = service.getCharacteristic(UUID.fromString(UART_READ_CHARACTERISTIC_UUID))
-                if(read != null) {
-                    writeCharacteristic = write
-                    readCharacteristic = read
-                    deviceGatt = gatt
-                    gatt.setCharacteristicNotification(read, true)
-                    return true
-                }
+            val read = service.getCharacteristic(UUID.fromString(UART_READ_CHARACTERISTIC_UUID))
+
+            if(write == null) {
+                Log.e("G1BLEManager", "UART write characteristic missing for $deviceName")
+                return false
             }
+            if(!write.supportsWriting()) {
+                Log.e("G1BLEManager", "UART write characteristic missing write properties for $deviceName")
+                return false
+            }
+
+            if(read == null) {
+                Log.e("G1BLEManager", "UART read characteristic missing for $deviceName")
+                return false
+            }
+            if(!read.supportsNotifications()) {
+                Log.e("G1BLEManager", "UART read characteristic missing notify/indicate properties for $deviceName")
+                return false
+            }
+
+            writeCharacteristic = write
+            readCharacteristic = read
+            deviceGatt = gatt
+            gatt.setCharacteristicNotification(read, true)
+            logFirmwareServices(gatt)
+            return true
         }
+        Log.e("G1BLEManager", "UART service missing for $deviceName")
         return false
     }
 
@@ -149,5 +184,14 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
         writeCharacteristic = null
         readCharacteristic = null
         writableConnectionState.value = G1.ConnectionState.DISCONNECTED
+    }
+
+    private fun logFirmwareServices(gatt: BluetoothGatt) {
+        val hasSmp = gatt.getService(UUID.fromString(SMP_SERVICE_UUID)) != null
+        val hasDfu = gatt.getService(UUID.fromString(DFU_SERVICE_UUID)) != null
+        Log.d(
+            "G1BLEManager",
+            "Firmware services detected for $deviceName - SMP: $hasSmp, DFU: $hasDfu"
+        )
     }
 }
