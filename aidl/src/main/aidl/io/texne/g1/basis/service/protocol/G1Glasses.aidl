@@ -8,6 +8,7 @@ parcelable G1Glasses {
     const int CONNECTED = 3;
     const int DISCONNECTING = 4;
     const int ERROR = 666;
+    const int MTU_UNKNOWN = 0;
 
     String id;
     String name;
@@ -19,4 +20,17 @@ parcelable G1Glasses {
     int rightBatteryPercentage;
     int signalStrength;
     int rssi;
+    String leftMacAddress;
+    String rightMacAddress;
+    int leftNegotiatedMtu;
+    int rightNegotiatedMtu;
+    long leftLastConnectionAttemptMillis;
+    long rightLastConnectionAttemptMillis;
+    long leftLastConnectionSuccessMillis;
+    long rightLastConnectionSuccessMillis;
+    long leftLastDisconnectMillis;
+    long rightLastDisconnectMillis;
+    long lastConnectionAttemptMillis;
+    long lastConnectionSuccessMillis;
+    long lastDisconnectMillis;
 }

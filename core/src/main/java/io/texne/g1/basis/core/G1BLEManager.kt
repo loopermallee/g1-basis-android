@@ -44,6 +44,8 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
     val connectionState = writableConnectionState.asStateFlow()
     private val writableIncoming = MutableSharedFlow<IncomingPacket>()
     val incoming = writableIncoming.asSharedFlow()
+    private val writableNegotiatedMtu = MutableStateFlow<Int?>(null)
+    val negotiatedMtu = writableNegotiatedMtu.asStateFlow()
 
     private var deviceGatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
@@ -59,7 +61,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
             }
 
             override fun onDeviceConnected(device: BluetoothDevice) {
-                // EMPTY
+                writableNegotiatedMtu.value = 23
             }
 
             override fun onDeviceFailedToConnect(
@@ -67,6 +69,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
                 reason: Int
             ) {
                 writableConnectionState.value = G1.ConnectionState.ERROR
+                writableNegotiatedMtu.value = null
             }
 
             override fun onDeviceReady(device: BluetoothDevice) {
@@ -82,6 +85,7 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
                 reason: Int
             ) {
                 writableConnectionState.value = G1.ConnectionState.DISCONNECTED
+                writableNegotiatedMtu.value = null
             }
         })
         val notificationCharacteristic = readCharacteristic
@@ -197,6 +201,12 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
         writeCharacteristic = null
         readCharacteristic = null
         writableConnectionState.value = G1.ConnectionState.DISCONNECTED
+        writableNegotiatedMtu.value = null
+    }
+
+    override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+        super.onMtuChanged(device, mtu)
+        writableNegotiatedMtu.value = mtu
     }
 
     private fun logFirmwareServices(gatt: BluetoothGatt) {

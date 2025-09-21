@@ -14,6 +14,8 @@ import java.io.Closeable
 
 const val MAX_LINES_PER_PAGE = 5
 const val MAX_CHARACTERS_PER_LINE = 40
+const val MTU_UNKNOWN = 0
+const val TIMESTAMP_UNKNOWN = 0L
 
 abstract class G1ServiceCommon<ServiceInterface> constructor(
     private val context: Context
@@ -31,14 +33,38 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         val leftBatteryPercentage: Int,
         val rightBatteryPercentage: Int,
         val signalStrength: Int = SIGNAL_STRENGTH_UNKNOWN,
-        val rssi: Int = RSSI_UNKNOWN
+        val rssi: Int = RSSI_UNKNOWN,
+        val leftMacAddress: String = "",
+        val rightMacAddress: String = "",
+        val leftNegotiatedMtu: Int = MTU_UNKNOWN,
+        val rightNegotiatedMtu: Int = MTU_UNKNOWN,
+        val leftLastConnectionAttemptMillis: Long = TIMESTAMP_UNKNOWN,
+        val rightLastConnectionAttemptMillis: Long = TIMESTAMP_UNKNOWN,
+        val leftLastConnectionSuccessMillis: Long = TIMESTAMP_UNKNOWN,
+        val rightLastConnectionSuccessMillis: Long = TIMESTAMP_UNKNOWN,
+        val leftLastDisconnectMillis: Long = TIMESTAMP_UNKNOWN,
+        val rightLastDisconnectMillis: Long = TIMESTAMP_UNKNOWN,
+        val lastConnectionAttemptMillis: Long = TIMESTAMP_UNKNOWN,
+        val lastConnectionSuccessMillis: Long = TIMESTAMP_UNKNOWN,
+        val lastDisconnectMillis: Long = TIMESTAMP_UNKNOWN
     )
 
     enum class ServiceStatus { READY, LOOKING, LOOKED, ERROR }
 
+    data class ScanResult(
+        val id: String,
+        val name: String,
+        val signalStrength: Int = SIGNAL_STRENGTH_UNKNOWN,
+        val rssi: Int = RSSI_UNKNOWN,
+        val timestampMillis: Long = TIMESTAMP_UNKNOWN
+    )
+
     data class State(
         val status: ServiceStatus,
-        val glasses: List<Glasses>
+        val glasses: List<Glasses>,
+        val scanTriggerTimestamps: List<Long> = emptyList(),
+        val recentScanResults: List<ScanResult> = emptyList(),
+        val lastConnectedId: String? = null
     )
 
     protected val writableState =

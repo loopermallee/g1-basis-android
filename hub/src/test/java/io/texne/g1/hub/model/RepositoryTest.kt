@@ -41,6 +41,7 @@ class RepositoryTest {
     @BeforeTest
     fun setUp() {
         MockKAnnotations.init(this, relaxUnitFun = true)
+        every { context.applicationContext } returns context
         every { service.listConnectedGlasses() } returns listOf(connectedGlasses)
         repository = Repository(context)
         repository.setServiceManagerForTest(service)

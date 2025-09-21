@@ -71,7 +71,20 @@ class G1 {
         val leftConnectionState: ConnectionState,
         val rightConnectionState: ConnectionState,
         val leftBatteryPercentage: Int?,
-        val rightBatteryPercentage: Int?
+        val rightBatteryPercentage: Int?,
+        val leftMacAddress: String,
+        val rightMacAddress: String,
+        val leftNegotiatedMtu: Int?,
+        val rightNegotiatedMtu: Int?,
+        val leftLastConnectionAttemptMillis: Long?,
+        val rightLastConnectionAttemptMillis: Long?,
+        val leftLastConnectionSuccessMillis: Long?,
+        val rightLastConnectionSuccessMillis: Long?,
+        val leftLastDisconnectMillis: Long?,
+        val rightLastDisconnectMillis: Long?,
+        val lastConnectionAttemptMillis: Long?,
+        val lastConnectionSuccessMillis: Long?,
+        val lastDisconnectMillis: Long?
     )
     val state: StateFlow<State>
     private var currentState: State? = null
@@ -104,26 +117,41 @@ class G1 {
                 rightBatteryPercentage
             )
 
+            val newState = State(
+                connectionState = connectionState,
+                batteryPercentage = batteryPercentage,
+                leftConnectionState = lConnectionState,
+                rightConnectionState = rConnectionState,
+                leftBatteryPercentage = leftBatteryPercentage,
+                rightBatteryPercentage = rightBatteryPercentage,
+                leftMacAddress = l.macAddress,
+                rightMacAddress = r.macAddress,
+                leftNegotiatedMtu = l.negotiatedMtu,
+                rightNegotiatedMtu = r.negotiatedMtu,
+                leftLastConnectionAttemptMillis = l.lastConnectionAttemptMillis,
+                rightLastConnectionAttemptMillis = r.lastConnectionAttemptMillis,
+                leftLastConnectionSuccessMillis = l.lastConnectionSuccessMillis,
+                rightLastConnectionSuccessMillis = r.lastConnectionSuccessMillis,
+                leftLastDisconnectMillis = l.lastDisconnectMillis,
+                rightLastDisconnectMillis = r.lastDisconnectMillis,
+                lastConnectionAttemptMillis = listOfNotNull(
+                    l.lastConnectionAttemptMillis,
+                    r.lastConnectionAttemptMillis
+                ).maxOrNull(),
+                lastConnectionSuccessMillis = listOfNotNull(
+                    l.lastConnectionSuccessMillis,
+                    r.lastConnectionSuccessMillis
+                ).maxOrNull(),
+                lastDisconnectMillis = listOfNotNull(
+                    l.lastDisconnectMillis,
+                    r.lastDisconnectMillis
+                ).maxOrNull()
+            )
+
             val current = currentState
-            if(
-                current != null &&
-                connectionState == current.connectionState &&
-                batteryPercentage == current.batteryPercentage &&
-                lConnectionState == current.leftConnectionState &&
-                rConnectionState == current.rightConnectionState &&
-                leftBatteryPercentage == current.leftBatteryPercentage &&
-                rightBatteryPercentage == current.rightBatteryPercentage
-            ) {
+            if (current != null && current == newState) {
                 current
             } else {
-                val newState = State(
-                    connectionState = connectionState,
-                    batteryPercentage = batteryPercentage,
-                    leftConnectionState = lConnectionState,
-                    rightConnectionState = rConnectionState,
-                    leftBatteryPercentage = leftBatteryPercentage,
-                    rightBatteryPercentage = rightBatteryPercentage
-                )
                 Log.d("G1", "G1_STATE - composing - ${l} and ${r} = ${newState}")
                 currentState = newState
                 newState

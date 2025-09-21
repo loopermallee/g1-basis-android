@@ -394,7 +394,31 @@ class DebugViewModel @Inject constructor(
                         rightStatus = glasses.right.status,
                         rightBattery = glasses.right.batteryPercentage,
                         signalStrength = glasses.signalStrength,
-                        rssi = glasses.rssi
+                        rssi = glasses.rssi,
+                        leftMac = glasses.leftMacAddress,
+                        rightMac = glasses.rightMacAddress,
+                        leftMtu = glasses.leftNegotiatedMtu,
+                        rightMtu = glasses.rightNegotiatedMtu,
+                        leftLastAttempt = glasses.leftLastConnectionAttemptMillis,
+                        rightLastAttempt = glasses.rightLastConnectionAttemptMillis,
+                        leftLastSuccess = glasses.leftLastConnectionSuccessMillis,
+                        rightLastSuccess = glasses.rightLastConnectionSuccessMillis,
+                        leftLastDisconnect = glasses.leftLastDisconnectMillis,
+                        rightLastDisconnect = glasses.rightLastDisconnectMillis,
+                        lastAttempt = glasses.lastConnectionAttemptMillis,
+                        lastSuccess = glasses.lastConnectionSuccessMillis,
+                        lastDisconnect = glasses.lastDisconnectMillis
+                    )
+                },
+                lastConnectedId = it.lastConnectedId,
+                scanTriggers = it.scanTriggerTimestamps,
+                recentScanResults = it.recentScanResults.map { result ->
+                    DebugSnapshot.ServiceSnapshot.ScanResult(
+                        id = result.id,
+                        name = result.name,
+                        signalStrength = result.signalStrength,
+                        rssi = result.rssi,
+                        timestampMillis = result.timestampMillis
                     )
                 }
             )

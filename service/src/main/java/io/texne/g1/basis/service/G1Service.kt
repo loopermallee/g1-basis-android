@@ -32,6 +32,8 @@ import io.texne.g1.basis.service.protocol.IG1Service
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
 import io.texne.g1.basis.service.protocol.SIGNAL_STRENGTH_UNKNOWN
 import io.texne.g1.basis.service.protocol.RSSI_UNKNOWN
+import io.texne.g1.basis.service.protocol.G1ScanResult
+import io.texne.g1.basis.service.logging.ConnectionLogStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,6 +42,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
@@ -97,7 +101,30 @@ private fun G1Service.InternalGlasses.toGlasses(): G1Glasses {
     glasses.rightBatteryPercentage = this.rightBatteryPercentage ?: -1
     glasses.signalStrength = this.signalStrength ?: SIGNAL_STRENGTH_UNKNOWN
     glasses.rssi = this.rssi ?: RSSI_UNKNOWN
+    glasses.leftMacAddress = this.leftMacAddress ?: ""
+    glasses.rightMacAddress = this.rightMacAddress ?: ""
+    glasses.leftNegotiatedMtu = this.leftNegotiatedMtu ?: G1Glasses.MTU_UNKNOWN
+    glasses.rightNegotiatedMtu = this.rightNegotiatedMtu ?: G1Glasses.MTU_UNKNOWN
+    glasses.leftLastConnectionAttemptMillis = this.leftLastConnectionAttemptMillis ?: 0L
+    glasses.rightLastConnectionAttemptMillis = this.rightLastConnectionAttemptMillis ?: 0L
+    glasses.leftLastConnectionSuccessMillis = this.leftLastConnectionSuccessMillis ?: 0L
+    glasses.rightLastConnectionSuccessMillis = this.rightLastConnectionSuccessMillis ?: 0L
+    glasses.leftLastDisconnectMillis = this.leftLastDisconnectMillis ?: 0L
+    glasses.rightLastDisconnectMillis = this.rightLastDisconnectMillis ?: 0L
+    glasses.lastConnectionAttemptMillis = this.lastConnectionAttemptMillis ?: 0L
+    glasses.lastConnectionSuccessMillis = this.lastConnectionSuccessMillis ?: 0L
+    glasses.lastDisconnectMillis = this.lastDisconnectMillis ?: 0L
     return glasses
+}
+
+private fun G1Service.InternalScanResult.toParcelable(): G1ScanResult {
+    val result = G1ScanResult()
+    result.id = this.id
+    result.name = this.name
+    result.signalStrength = this.signalStrength ?: SIGNAL_STRENGTH_UNKNOWN
+    result.rssi = this.rssi ?: RSSI_UNKNOWN
+    result.timestampMillis = this.timestampMillis
+    return result
 }
 
 private fun G1Service.InternalState.toState(): G1ServiceState {
@@ -105,6 +132,9 @@ private fun G1Service.InternalState.toState(): G1ServiceState {
     state.status = this.status.toInt()
     state.glasses = this.glasses.values.map { it -> it.toGlasses() }.toTypedArray()
     state.gestureEvent = this.gestureEvent?.toParcelable()
+    state.scanTriggerTimestamps = this.scanTriggerTimestamps.toLongArray()
+    state.recentScanResults = this.scanResults.map { it.toParcelable() }.toTypedArray()
+    state.lastConnectedId = this.lastConnectedId
     return state
 }
 
@@ -114,6 +144,8 @@ class G1Service: Service() {
 
     companion object {
         const val EXTRA_SIDE_FILTER = "io.texne.g1.basis.service.EXTRA_SIDE_FILTER"
+        private const val MAX_SCAN_RESULTS = 10
+        private const val MAX_SCAN_TRIGGER_HISTORY = 20
     }
 
     enum class ServiceStatus {
@@ -136,12 +168,35 @@ class G1Service: Service() {
         val rightBatteryPercentage: Int?,
         val signalStrength: Int?,
         val rssi: Int?,
+        val leftMacAddress: String?,
+        val rightMacAddress: String?,
+        val leftNegotiatedMtu: Int?,
+        val rightNegotiatedMtu: Int?,
+        val leftLastConnectionAttemptMillis: Long?,
+        val rightLastConnectionAttemptMillis: Long?,
+        val leftLastConnectionSuccessMillis: Long?,
+        val rightLastConnectionSuccessMillis: Long?,
+        val leftLastDisconnectMillis: Long?,
+        val rightLastDisconnectMillis: Long?,
+        val lastConnectionAttemptMillis: Long?,
+        val lastConnectionSuccessMillis: Long?,
+        val lastDisconnectMillis: Long?,
         val g1: G1
+    )
+    internal data class InternalScanResult(
+        val id: String,
+        val name: String,
+        val signalStrength: Int?,
+        val rssi: Int?,
+        val timestampMillis: Long
     )
     internal data class InternalState(
         val status: ServiceStatus = ServiceStatus.READY,
         val glasses: Map<String, InternalGlasses> = mapOf(),
-        val gestureEvent: ServiceGestureEvent? = null
+        val gestureEvent: ServiceGestureEvent? = null,
+        val scanTriggerTimestamps: List<Long> = emptyList(),
+        val scanResults: List<InternalScanResult> = emptyList(),
+        val lastConnectedId: String? = null
     )
     internal data class ServiceGestureEvent(
         val sequence: Int,
@@ -157,13 +212,29 @@ class G1Service: Service() {
     @Volatile
     private var sideMarkerFilter: Set<G1Gesture.Side>? = null
 
+    private fun formatDebugTimestamp(millis: Long): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(millis))
+
+    private fun formatMtuForLog(mtu: Int?): String =
+        mtu?.takeIf { it > 0 }?.toString() ?: "unknown"
+
+    private suspend fun appendConnectionLog(message: String) {
+        runCatching {
+            ConnectionLogStore.append(applicationContext, message)
+        }.onFailure { error ->
+            Log.w("G1Service", "Failed to append connection log entry", error)
+        }
+    }
+
     private suspend fun readLastConnectedId(): String? {
         val cached = cachedLastConnectedId
         if (cached != null) {
+            state.value = state.value.copy(lastConnectedId = cached)
             return cached
         }
         val stored = dataStore.data.map { preferences -> preferences[LAST_CONNECTED_ID] }.first()
         cachedLastConnectedId = stored
+        state.value = state.value.copy(lastConnectedId = stored)
         return stored
     }
 
@@ -176,6 +247,7 @@ class G1Service: Service() {
             }
         }
         cachedLastConnectedId = id
+        state.value = state.value.copy(lastConnectedId = id)
     }
 
     private fun ensureFullyDisconnected(id: String, g1: G1, glassesState: G1.State) {
@@ -285,12 +357,16 @@ class G1Service: Service() {
                             "Scanning with side marker filter: ${filterSnapshot.joinToString { it.name }}"
                         )
                     }
+                    val triggerTimestamp = System.currentTimeMillis()
+                    val updatedScanTriggers = (state.value.scanTriggerTimestamps + triggerTimestamp)
+                        .takeLast(MAX_SCAN_TRIGGER_HISTORY)
                     // clear all glasses except connected
                     state.value = state.value.copy(
                         status = ServiceStatus.LOOKING,
                         glasses = state.value.glasses.values
                             .filter { it.connectionState == G1.ConnectionState.CONNECTED }
-                            .associate { Pair(it.g1.id, it) }
+                            .associate { Pair(it.g1.id, it) },
+                        scanTriggerTimestamps = updatedScanTriggers
                     )
 
                     // make sure last connected id makes sense, fix if it doesn't for some reason
@@ -309,6 +385,17 @@ class G1Service: Service() {
                                 // add to glasses state if not already there
                                 if(state.value.glasses.values.find { it.g1.id == found.id } == null) {
                                     val glassesState = found.state.value
+                                    val initialSignalStrength = found.initialSignalStrength()
+                                    val initialRssi = found.initialAverageRssi()
+                                    val scanResult = InternalScanResult(
+                                        id = found.id,
+                                        name = found.name,
+                                        signalStrength = initialSignalStrength,
+                                        rssi = initialRssi,
+                                        timestampMillis = System.currentTimeMillis()
+                                    )
+                                    val updatedScanResults = (listOf(scanResult) + state.value.scanResults)
+                                        .take(MAX_SCAN_RESULTS)
                                     state.value = state.value.copy(
                                         glasses = state.value.glasses.plus(
                                             Pair(
@@ -320,12 +407,26 @@ class G1Service: Service() {
                                                     rightConnectionState = glassesState.rightConnectionState,
                                                     leftBatteryPercentage = glassesState.leftBatteryPercentage,
                                                     rightBatteryPercentage = glassesState.rightBatteryPercentage,
-                                                    signalStrength = found.initialSignalStrength(),
-                                                    rssi = found.initialAverageRssi(),
+                                                    signalStrength = initialSignalStrength,
+                                                    rssi = initialRssi,
+                                                    leftMacAddress = glassesState.leftMacAddress,
+                                                    rightMacAddress = glassesState.rightMacAddress,
+                                                    leftNegotiatedMtu = glassesState.leftNegotiatedMtu,
+                                                    rightNegotiatedMtu = glassesState.rightNegotiatedMtu,
+                                                    leftLastConnectionAttemptMillis = glassesState.leftLastConnectionAttemptMillis,
+                                                    rightLastConnectionAttemptMillis = glassesState.rightLastConnectionAttemptMillis,
+                                                    leftLastConnectionSuccessMillis = glassesState.leftLastConnectionSuccessMillis,
+                                                    rightLastConnectionSuccessMillis = glassesState.rightLastConnectionSuccessMillis,
+                                                    leftLastDisconnectMillis = glassesState.leftLastDisconnectMillis,
+                                                    rightLastDisconnectMillis = glassesState.rightLastDisconnectMillis,
+                                                    lastConnectionAttemptMillis = glassesState.lastConnectionAttemptMillis,
+                                                    lastConnectionSuccessMillis = glassesState.lastConnectionSuccessMillis,
+                                                    lastDisconnectMillis = glassesState.lastDisconnectMillis,
                                                     g1 = found
                                                 )
                                             )
-                                        )
+                                        ),
+                                        scanResults = updatedScanResults
                                     )
                                     observeGestures(found.id, found)
                                     coroutineScope.launch {
@@ -348,6 +449,19 @@ class G1Service: Service() {
                                                                 rightBatteryPercentage = glassesState.rightBatteryPercentage,
                                                                 signalStrength = it.value.signalStrength,
                                                                 rssi = it.value.rssi,
+                                                                leftMacAddress = glassesState.leftMacAddress,
+                                                                rightMacAddress = glassesState.rightMacAddress,
+                                                                leftNegotiatedMtu = glassesState.leftNegotiatedMtu,
+                                                                rightNegotiatedMtu = glassesState.rightNegotiatedMtu,
+                                                                leftLastConnectionAttemptMillis = glassesState.leftLastConnectionAttemptMillis,
+                                                                rightLastConnectionAttemptMillis = glassesState.rightLastConnectionAttemptMillis,
+                                                                leftLastConnectionSuccessMillis = glassesState.leftLastConnectionSuccessMillis,
+                                                                rightLastConnectionSuccessMillis = glassesState.rightLastConnectionSuccessMillis,
+                                                                leftLastDisconnectMillis = glassesState.leftLastDisconnectMillis,
+                                                                rightLastDisconnectMillis = glassesState.rightLastDisconnectMillis,
+                                                                lastConnectionAttemptMillis = glassesState.lastConnectionAttemptMillis,
+                                                                lastConnectionSuccessMillis = glassesState.lastConnectionSuccessMillis,
+                                                                lastDisconnectMillis = glassesState.lastDisconnectMillis,
                                                                 g1 = it.value.g1
                                                             )
                                                         )
@@ -389,7 +503,37 @@ class G1Service: Service() {
                 if (glasses != null) {
                     coroutineScope.launch {
                         forcedDisconnectJobs.remove(id)?.cancel()
+                        val attemptTimestamp = System.currentTimeMillis()
+                        appendConnectionLog(
+                            "${formatDebugTimestamp(attemptTimestamp)} Attempt connect ${glasses.g1.name} (${glasses.g1.id})"
+                        )
                         val result = glasses.g1.connect(this@G1Service, coroutineScope)
+                        val snapshot = glasses.g1.state.value
+                        val resultTimestamp = System.currentTimeMillis()
+                        val resultLabel = if (result == true) "success" else "failed"
+                        val logEntry = buildString {
+                            append(formatDebugTimestamp(resultTimestamp))
+                            append(" Result ")
+                            append(resultLabel)
+                            append(' ')
+                            append(glasses.g1.name)
+                            append(" (")
+                            append(glasses.g1.id)
+                            append("); states(L=")
+                            append(snapshot.leftConnectionState.name)
+                            append(",R=")
+                            append(snapshot.rightConnectionState.name)
+                            append("); MAC(L=")
+                            append(snapshot.leftMacAddress)
+                            append(",R=")
+                            append(snapshot.rightMacAddress)
+                            append("); MTU(L=")
+                            append(formatMtuForLog(snapshot.leftNegotiatedMtu))
+                            append(",R=")
+                            append(formatMtuForLog(snapshot.rightNegotiatedMtu))
+                            append(')')
+                        }
+                        appendConnectionLog(logEntry)
                         if(result == true) {
                             persistLastConnectedId(id)
                         }
@@ -409,7 +553,38 @@ class G1Service: Service() {
                 if (glasses != null) {
                     coroutineScope.launch {
                         forcedDisconnectJobs.remove(id)?.cancel()
-                        glasses.g1.disconnect()
+                        val attemptTimestamp = System.currentTimeMillis()
+                        appendConnectionLog(
+                            "${formatDebugTimestamp(attemptTimestamp)} Attempt disconnect ${glasses.g1.name} (${glasses.g1.id})"
+                        )
+                        try {
+                            glasses.g1.disconnect()
+                            val snapshot = glasses.g1.state.value
+                            appendConnectionLog(
+                                buildString {
+                                    append(formatDebugTimestamp(System.currentTimeMillis()))
+                                    append(" Disconnected ")
+                                    append(glasses.g1.name)
+                                    append(" (")
+                                    append(glasses.g1.id)
+                                    append("); states(L=")
+                                    append(snapshot.leftConnectionState.name)
+                                    append(",R=")
+                                    append(snapshot.rightConnectionState.name)
+                                    append("); MAC(L=")
+                                    append(snapshot.leftMacAddress)
+                                    append(",R=")
+                                    append(snapshot.rightMacAddress)
+                                    append(")")
+                                }
+                            )
+                        } catch (error: Throwable) {
+                            appendConnectionLog(
+                                "${formatDebugTimestamp(System.currentTimeMillis())} Disconnect failed ${glasses.g1.name} (${glasses.g1.id}): ${error.message ?: error::class.java.simpleName}"
+                            )
+                            callback?.onResult(false)
+                            return@launch
+                        }
                         gestureCollectors.remove(id)?.cancel()
                         if(cachedLastConnectedId == id) {
                             persistLastConnectedId(null)

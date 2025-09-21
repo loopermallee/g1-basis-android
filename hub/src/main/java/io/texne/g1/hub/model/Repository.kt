@@ -5,8 +5,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceManager
 import io.texne.g1.basis.client.MAX_CHARACTERS_PER_LINE
+import io.texne.g1.basis.client.MTU_UNKNOWN
+import io.texne.g1.basis.client.TIMESTAMP_UNKNOWN
 import io.texne.g1.basis.service.protocol.RSSI_UNKNOWN
 import io.texne.g1.basis.service.protocol.SIGNAL_STRENGTH_UNKNOWN
+import io.texne.g1.basis.service.logging.ConnectionLogStore
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -38,12 +41,36 @@ class Repository @Inject constructor(
         val left: EyeSnapshot,
         val right: EyeSnapshot,
         val signalStrength: Int?,
-        val rssi: Int?
+        val rssi: Int?,
+        val leftMacAddress: String?,
+        val rightMacAddress: String?,
+        val leftNegotiatedMtu: Int?,
+        val rightNegotiatedMtu: Int?,
+        val leftLastConnectionAttemptMillis: Long?,
+        val rightLastConnectionAttemptMillis: Long?,
+        val leftLastConnectionSuccessMillis: Long?,
+        val rightLastConnectionSuccessMillis: Long?,
+        val leftLastDisconnectMillis: Long?,
+        val rightLastDisconnectMillis: Long?,
+        val lastConnectionAttemptMillis: Long?,
+        val lastConnectionSuccessMillis: Long?,
+        val lastDisconnectMillis: Long?
+    )
+
+    data class ScanResultSnapshot(
+        val id: String,
+        val name: String,
+        val signalStrength: Int?,
+        val rssi: Int?,
+        val timestampMillis: Long
     )
 
     data class ServiceSnapshot(
         val status: G1ServiceCommon.ServiceStatus,
-        val glasses: List<GlassesSnapshot>
+        val glasses: List<GlassesSnapshot>,
+        val scanTriggerTimestamps: List<Long>,
+        val recentScanResults: List<ScanResultSnapshot>,
+        val lastConnectedId: String?
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -55,6 +82,13 @@ class Repository @Inject constructor(
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     private val serviceState = MutableStateFlow<ServiceSnapshot?>(null)
+    private val storedScanTriggers = MutableStateFlow<List<Long>>(emptyList())
+
+    init {
+        scope.launch {
+            storedScanTriggers.value = ScanHistoryStore.read(applicationContext)
+        }
+    }
 
     fun gestureEvents(): SharedFlow<G1ServiceCommon.GestureEvent> = gestureEventsFlow.asSharedFlow()
 
@@ -72,11 +106,27 @@ class Repository @Inject constructor(
         serviceStateJob?.cancel()
         serviceStateJob = scope.launch {
             service.state.collect { state ->
-                serviceState.value = state?.let { snapshot ->
-                    ServiceSnapshot(
-                        status = snapshot.status,
-                        glasses = snapshot.glasses.map { it.toSnapshot() }
+                if (state == null) {
+                    serviceState.value = null
+                } else {
+                    val serviceTriggers = state.scanTriggerTimestamps
+                    val effectiveTriggers = if (serviceTriggers.isNotEmpty()) {
+                        if (serviceTriggers != storedScanTriggers.value) {
+                            storedScanTriggers.value = serviceTriggers
+                            ScanHistoryStore.store(applicationContext, serviceTriggers)
+                        }
+                        serviceTriggers
+                    } else {
+                        storedScanTriggers.value
+                    }
+                    val snapshot = ServiceSnapshot(
+                        status = state.status,
+                        glasses = state.glasses.map { it.toSnapshot() },
+                        scanTriggerTimestamps = effectiveTriggers,
+                        recentScanResults = state.recentScanResults.map { it.toSnapshot() },
+                        lastConnectedId = state.lastConnectedId
                     )
+                    serviceState.value = snapshot
                 }
             }
         }
@@ -93,6 +143,9 @@ class Repository @Inject constructor(
             service.close()
         }
     }
+
+    suspend fun getConnectionLogs(): List<String> =
+        ConnectionLogStore.read(applicationContext)
 
     fun startLooking() {
         if(::service.isInitialized) {
@@ -209,6 +262,27 @@ class Repository @Inject constructor(
             batteryPercentage = rightBatteryPercentage
         ),
         signalStrength = signalStrength.takeIf { it != SIGNAL_STRENGTH_UNKNOWN },
-        rssi = rssi.takeIf { it != RSSI_UNKNOWN }
+        rssi = rssi.takeIf { it != RSSI_UNKNOWN },
+        leftMacAddress = leftMacAddress.ifBlank { null },
+        rightMacAddress = rightMacAddress.ifBlank { null },
+        leftNegotiatedMtu = leftNegotiatedMtu.takeIf { it != MTU_UNKNOWN },
+        rightNegotiatedMtu = rightNegotiatedMtu.takeIf { it != MTU_UNKNOWN },
+        leftLastConnectionAttemptMillis = leftLastConnectionAttemptMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        rightLastConnectionAttemptMillis = rightLastConnectionAttemptMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        leftLastConnectionSuccessMillis = leftLastConnectionSuccessMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        rightLastConnectionSuccessMillis = rightLastConnectionSuccessMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        leftLastDisconnectMillis = leftLastDisconnectMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        rightLastDisconnectMillis = rightLastDisconnectMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        lastConnectionAttemptMillis = lastConnectionAttemptMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        lastConnectionSuccessMillis = lastConnectionSuccessMillis.takeIf { it != TIMESTAMP_UNKNOWN },
+        lastDisconnectMillis = lastDisconnectMillis.takeIf { it != TIMESTAMP_UNKNOWN }
+    )
+
+    private fun G1ServiceCommon.ScanResult.toSnapshot() = ScanResultSnapshot(
+        id = id,
+        name = name,
+        signalStrength = signalStrength.takeIf { it != SIGNAL_STRENGTH_UNKNOWN },
+        rssi = rssi.takeIf { it != RSSI_UNKNOWN },
+        timestampMillis = timestampMillis
     )
 }

@@ -42,10 +42,15 @@ internal class G1Device(
     data class State(
         val connectionState: G1.ConnectionState = G1.ConnectionState.UNINITIALIZED,
         val batteryPercentage: Int? = null,
-        val dashboardStatus: DashboardStatus? = null
+        val dashboardStatus: DashboardStatus? = null,
+        val macAddress: String,
+        val negotiatedMtu: Int? = null,
+        val lastConnectionAttemptMillis: Long? = null,
+        val lastConnectionSuccessMillis: Long? = null,
+        val lastDisconnectMillis: Long? = null
     )
 
-    private val writableState = MutableStateFlow<State>(State())
+    private val writableState = MutableStateFlow(State(macAddress = address))
     val state = writableState.asStateFlow()
 
     private val writableGestures = MutableSharedFlow<G1Gesture>(
@@ -69,9 +74,24 @@ internal class G1Device(
             scope.launch {
                 manager.connectionState.collect {
                     Log.d("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
+                    val now = System.currentTimeMillis()
                     writableState.value = state.value.copy(
-                        connectionState = it
+                        connectionState = it,
+                        lastConnectionSuccessMillis = when (it) {
+                            G1.ConnectionState.CONNECTED -> now
+                            else -> state.value.lastConnectionSuccessMillis
+                        },
+                        lastDisconnectMillis = when (it) {
+                            G1.ConnectionState.DISCONNECTED,
+                            G1.ConnectionState.ERROR -> now
+                            else -> state.value.lastDisconnectMillis
+                        }
                     )
+                }
+            }
+            scope.launch {
+                manager.negotiatedMtu.collect { mtu ->
+                    writableState.value = state.value.copy(negotiatedMtu = mtu)
                 }
             }
             scope.launch {
@@ -120,6 +140,8 @@ internal class G1Device(
             }
         }
         try {
+            val now = System.currentTimeMillis()
+            writableState.value = state.value.copy(lastConnectionAttemptMillis = now)
             manager.connect(device)
                 .useAutoConnect(true)
                 .retry(3)

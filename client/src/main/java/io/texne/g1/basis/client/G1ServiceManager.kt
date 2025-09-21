@@ -108,9 +108,33 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
                                     leftBatteryPercentage = glass.leftBatteryPercentage,
                                     rightBatteryPercentage = glass.rightBatteryPercentage,
                                     signalStrength = glass.signalStrength,
-                                    rssi = glass.rssi
+                                    rssi = glass.rssi,
+                                    leftMacAddress = glass.leftMacAddress ?: "",
+                                    rightMacAddress = glass.rightMacAddress ?: "",
+                                    leftNegotiatedMtu = glass.leftNegotiatedMtu,
+                                    rightNegotiatedMtu = glass.rightNegotiatedMtu,
+                                    leftLastConnectionAttemptMillis = glass.leftLastConnectionAttemptMillis,
+                                    rightLastConnectionAttemptMillis = glass.rightLastConnectionAttemptMillis,
+                                    leftLastConnectionSuccessMillis = glass.leftLastConnectionSuccessMillis,
+                                    rightLastConnectionSuccessMillis = glass.rightLastConnectionSuccessMillis,
+                                    leftLastDisconnectMillis = glass.leftLastDisconnectMillis,
+                                    rightLastDisconnectMillis = glass.rightLastDisconnectMillis,
+                                    lastConnectionAttemptMillis = glass.lastConnectionAttemptMillis,
+                                    lastConnectionSuccessMillis = glass.lastConnectionSuccessMillis,
+                                    lastDisconnectMillis = glass.lastDisconnectMillis
                                 )
-                            }
+                            },
+                            scanTriggerTimestamps = newState.scanTriggerTimestamps?.toList() ?: emptyList(),
+                            recentScanResults = newState.recentScanResults?.map { result ->
+                                ScanResult(
+                                    id = result.id,
+                                    name = result.name,
+                                    signalStrength = result.signalStrength,
+                                    rssi = result.rssi,
+                                    timestampMillis = result.timestampMillis
+                                )
+                            } ?: emptyList(),
+                            lastConnectedId = newState.lastConnectedId
                         )
                     }
                 }

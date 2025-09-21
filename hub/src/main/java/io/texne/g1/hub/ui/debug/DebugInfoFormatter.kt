@@ -54,6 +54,7 @@ class DebugInfoFormatter @Inject constructor() {
             builder.appendLine("No service snapshot available.")
         } else {
             builder.appendLine("Status: ${service.status}")
+            builder.appendLine("Last connected ID: ${service.lastConnectedId ?: "—"}")
             if (service.glasses.isEmpty()) {
                 builder.appendLine("Glasses: none detected")
             } else {
@@ -68,6 +69,50 @@ class DebugInfoFormatter @Inject constructor() {
                     builder.appendLine(
                         "  signal=${glasses.signalStrength?.toString() ?: "—"} " +
                             "rssi=${glasses.rssi?.let { "$it dBm" } ?: "—"}"
+                    )
+                    builder.appendLine(
+                        "  mac L=${glasses.leftMac ?: "—"} R=${glasses.rightMac ?: "—"}"
+                    )
+                    builder.appendLine(
+                        "  mtu L=${formatMtu(glasses.leftMtu)} R=${formatMtu(glasses.rightMtu)}"
+                    )
+                    builder.appendLine(
+                        "  last attempt=${formatOptionalTimestamp(glasses.lastAttempt)} " +
+                            "success=${formatOptionalTimestamp(glasses.lastSuccess)} " +
+                            "disconnect=${formatOptionalTimestamp(glasses.lastDisconnect)}"
+                    )
+                    builder.appendLine(
+                        "  per-eye attempt L=${formatOptionalTimestamp(glasses.leftLastAttempt)} " +
+                            "R=${formatOptionalTimestamp(glasses.rightLastAttempt)}"
+                    )
+                    builder.appendLine(
+                        "  per-eye success L=${formatOptionalTimestamp(glasses.leftLastSuccess)} " +
+                            "R=${formatOptionalTimestamp(glasses.rightLastSuccess)}"
+                    )
+                    builder.appendLine(
+                        "  per-eye disconnect L=${formatOptionalTimestamp(glasses.leftLastDisconnect)} " +
+                            "R=${formatOptionalTimestamp(glasses.rightLastDisconnect)}"
+                    )
+                }
+            }
+            if (service.scanTriggers.isEmpty()) {
+                builder.appendLine("Scan triggers: none recorded")
+            } else {
+                builder.appendLine("Scan triggers:")
+                service.scanTriggers.forEach { trigger ->
+                    builder.appendLine("  • ${formatTimestamp(trigger)}")
+                }
+            }
+            if (service.recentScanResults.isEmpty()) {
+                builder.appendLine("Recent scans: none")
+            } else {
+                builder.appendLine("Recent scans:")
+                service.recentScanResults.forEach { result ->
+                    val signal = result.signalStrength?.toString() ?: "—"
+                    val rssi = result.rssi?.let { "$it dBm" } ?: "—"
+                    builder.appendLine(
+                        "  • ${formatTimestamp(result.timestampMillis)} • ${result.name} (${result.id})" +
+                            " • signal=$signal • rssi=$rssi"
                     )
                 }
             }
@@ -130,6 +175,12 @@ class DebugInfoFormatter @Inject constructor() {
 
     private fun formatBattery(value: Int): String = if (value >= 0) "$value%" else "—"
 
+    private fun formatOptionalTimestamp(value: Long?): String =
+        value?.let { formatTimestamp(it) } ?: "—"
+
+    private fun formatMtu(value: Int?): String =
+        value?.takeIf { it > 0 }?.toString() ?: "—"
+
     private companion object {
         private val TIMESTAMP_FORMATTER = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS z", Locale.US)
         private val FILE_NAME_FORMATTER = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
@@ -172,7 +223,10 @@ data class DebugSnapshot(
 
     data class ServiceSnapshot(
         val status: G1ServiceCommon.ServiceStatus,
-        val glasses: List<Glasses>
+        val glasses: List<Glasses>,
+        val lastConnectedId: String?,
+        val scanTriggers: List<Long>,
+        val recentScanResults: List<ScanResult>
     ) {
         data class Glasses(
             val id: String,
@@ -184,7 +238,28 @@ data class DebugSnapshot(
             val rightStatus: G1ServiceCommon.GlassesStatus,
             val rightBattery: Int,
             val signalStrength: Int?,
-            val rssi: Int?
+            val rssi: Int?,
+            val leftMac: String?,
+            val rightMac: String?,
+            val leftMtu: Int?,
+            val rightMtu: Int?,
+            val leftLastAttempt: Long?,
+            val rightLastAttempt: Long?,
+            val leftLastSuccess: Long?,
+            val rightLastSuccess: Long?,
+            val leftLastDisconnect: Long?,
+            val rightLastDisconnect: Long?,
+            val lastAttempt: Long?,
+            val lastSuccess: Long?,
+            val lastDisconnect: Long?
+        )
+
+        data class ScanResult(
+            val id: String,
+            val name: String,
+            val signalStrength: Int?,
+            val rssi: Int?,
+            val timestampMillis: Long
         )
     }
 
