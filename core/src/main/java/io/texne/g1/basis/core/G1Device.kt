@@ -33,9 +33,16 @@ internal class G1Device(
 
     // state flow ----------------------------------------------------------------------------------
 
+    data class DashboardStatus(
+        val countdownTicks: Int?,
+        val currentPage: Int?,
+        val totalPages: Int?
+    )
+
     data class State(
         val connectionState: G1.ConnectionState = G1.ConnectionState.UNINITIALIZED,
-        val batteryPercentage: Int? = null
+        val batteryPercentage: Int? = null,
+        val dashboardStatus: DashboardStatus? = null
     )
 
     private val writableState = MutableStateFlow<State>(State())
@@ -83,6 +90,19 @@ internal class G1Device(
                                 G1Gesture.Type.HOLD -> G1Gesture.Hold(side, packet.timestampMillis)
                             }
                             writableGestures.emit(gesture)
+                        }
+                        is DashboardStatusPacket -> {
+                            Log.d("G1Device", "DASHBOARD_STATUS ${packet}")
+                            val status = DashboardStatus(
+                                countdownTicks = packet.countdownTicks,
+                                currentPage = packet.currentPage,
+                                totalPages = packet.totalPages
+                            )
+                            if(state.value.dashboardStatus != status) {
+                                writableState.value = state.value.copy(
+                                    dashboardStatus = status
+                                )
+                            }
                         }
                         else -> {
                             // is this the response we're expecting?

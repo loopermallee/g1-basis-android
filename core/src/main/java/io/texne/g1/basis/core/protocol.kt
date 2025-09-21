@@ -71,6 +71,13 @@ internal fun hasFirstTwo(first: Byte, second: Byte): (ByteArray) -> Boolean = { 
     bytes.size > 1 && bytes[0] == first && bytes[1] == second
 }
 
+internal fun ByteArray.readUInt16LittleEndian(offset: Int): Int? {
+    if (size <= offset + 1) {
+        return null
+    }
+    return (this[offset].toInt() and 0xFF) or ((this[offset + 1].toInt() and 0xFF) shl 8)
+}
+
 enum class IncomingPacketType(
     val label: String,
     val isType: (bytes: ByteArray) -> Boolean,
@@ -79,6 +86,7 @@ enum class IncomingPacketType(
     EXIT("EXIT", hasFirst(0x18), { _, bytes -> ExitResponsePacket(bytes) }),
     GLASSES_BATTERY_LEVEL("GLASSES_BATTERY_LEVEL", hasFirstTwo(0x2C, 0x66), { _, bytes -> BatteryLevelResponsePacket(bytes) }),
     AI_RESULT_RECEIVED("AI_RESULT_RECEIVED", hasFirst(0x4E), { _, bytes -> SendTextResponsePacket(bytes) }),
+    DASHBOARD_STATUS("DASHBOARD_STATUS", hasFirstTwo(0x22, 0x05), { _, bytes -> DashboardStatusPacket(bytes) }),
     GESTURE_TAP("GESTURE_TAP", hasFirst(0x29), { type, bytes -> GesturePacket(type, bytes, G1Gesture.Type.TAP) }),
     GESTURE_HOLD("GESTURE_HOLD", hasFirst(0x2B), { type, bytes -> GesturePacket(type, bytes, G1Gesture.Type.HOLD) }),
 ;
@@ -184,6 +192,27 @@ class BatteryLevelResponsePacket(bytes: ByteArray): IncomingPacket(
     val level = bytes[2].toInt()
     override fun toString(): String {
         return "${type} => ${level}%"
+    }
+}
+
+class DashboardStatusPacket(bytes: ByteArray): IncomingPacket(
+    IncomingPacketType.DASHBOARD_STATUS,
+    bytes
+) {
+    val countdownTicks: Int? = bytes.readUInt16LittleEndian(2)
+    val currentPage: Int? = bytes.readUInt16LittleEndian(4)
+    val totalPages: Int? = bytes.readUInt16LittleEndian(6)
+
+    override fun toString(): String {
+        val countdownText = countdownTicks?.let { value ->
+            "${value} (0x${value.toString(16).padStart(4, '0')})"
+        } ?: "null"
+        val pageText = if(currentPage != null && totalPages != null) {
+            "${currentPage}/${totalPages}"
+        } else {
+            "${currentPage ?: "null"}/${totalPages ?: "null"}"
+        }
+        return "${type} => countdownTicks=${countdownText}, page=${pageText}"
     }
 }
 
