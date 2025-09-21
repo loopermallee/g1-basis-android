@@ -13,10 +13,9 @@ import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
 import io.texne.g1.basis.service.protocol.ObserveStateCallback
+import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-
-private const val DEVICE_NAME_PREFIX = "Even G1_"
 
 class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1ServiceClient>(context) {
 
@@ -136,7 +135,7 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
         val grouped = mutableMapOf<String, BondedDevicePair>()
         forEach { device ->
             val name = device.name ?: return@forEach
-            if (!name.startsWith(DEVICE_NAME_PREFIX)) {
+            if (!name.isRecognizedG1Name()) {
                 return@forEach
             }
             val side = name.detectDeviceSide() ?: return@forEach
@@ -176,18 +175,22 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
         var right: BluetoothDevice? = null,
     )
 
-    private fun String.detectDeviceSide(): DeviceSide? = when {
-        hasSideToken("L") -> DeviceSide.LEFT
-        hasSideToken("R") -> DeviceSide.RIGHT
-        else -> null
+    private fun String.detectDeviceSide(): DeviceSide? {
+        val segments = normalizedSegments()
+        val sideIndex = segments.indexOfFirst { it.equals("L", ignoreCase = true) || it.equals("R", ignoreCase = true) }
+        if (sideIndex == -1) {
+            return null
+        }
+        val token = segments[sideIndex]
+        return if (token.equals("L", ignoreCase = true)) DeviceSide.LEFT else DeviceSide.RIGHT
     }
 
-    private fun String.hasSideToken(side: String): Boolean =
-        this.split("_").any { it == side }
-
     private fun pairingIdentifier(name: String, address: String): String? {
-        val segments = name.split("_")
-        val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
+        if (!name.isRecognizedG1Name()) {
+            return null
+        }
+        val segments = name.normalizedSegments()
+        val sideIndex = segments.indexOfFirst { it.equals("L", ignoreCase = true) || it.equals("R", ignoreCase = true) }
         if (sideIndex == -1) {
             return null
         }
@@ -214,10 +217,21 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
     }
 
     private fun displayNameFromDeviceName(rawName: String): String? {
-        val segments = rawName.split("_")
+        val segments = rawName.normalizedSegments()
         val first = segments.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return null
         val second = segments.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
         return "$first.$second"
+    }
+
+    private fun String.normalizeSeparators(): String =
+        if (contains("_")) this else replace('-', '_').replace(' ', '_')
+
+    private fun String.normalizedSegments(): List<String> =
+        normalizeSeparators().split("_").filter { it.isNotEmpty() }
+
+    private fun String.isRecognizedG1Name(): Boolean {
+        val normalized = lowercase(Locale.US)
+        return normalized.contains("even") || normalized.contains("g1")
     }
 
 

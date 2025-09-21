@@ -81,6 +81,32 @@ class G1FindTest {
     }
 
     @Test
+    fun `pairs tolerate space separated names`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+
+        val results = listOf(
+            fakeScanResult("AA:BB:CC:DD:21:01", "Even G1 7 L alpha"),
+            fakeScanResult("AA:BB:CC:DD:21:02", "Even G1 7 R alpha"),
+        )
+
+        val completed = G1.collectCompletePairs(results, foundAddresses, foundPairs)
+
+        assertEquals("Expected one completed pair", 1, completed.size)
+        val pair = completed.first()
+        assertEquals("Even G1 7 L alpha", pair.left.device.name)
+        assertEquals("Even G1 7 R alpha", pair.right.device.name)
+        assertTrue("No partial pairs should remain", foundPairs.isEmpty())
+        assertEquals(
+            listOf(
+                "AA:BB:CC:DD:21:01",
+                "AA:BB:CC:DD:21:02",
+            ),
+            foundAddresses
+        )
+    }
+
+    @Test
     fun `devices with different suffixes remain partial`() {
         val foundAddresses = mutableListOf<String>()
         val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
@@ -228,6 +254,21 @@ class G1FindTest {
         val pair = completed.first()
         assertEquals("Even G1_7_L_theta", pair.left.device.name)
         assertEquals("Even G1_7_R_theta", pair.right.device.name)
+    }
+
+    @Test
+    fun `bonded devices tolerate hyphenated names`() {
+        val devices = linkedSetOf(
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:60", "Even-G1 7 L hyphen"),
+            fakeBluetoothDevice("AA:BB:CC:DD:EE:61", "Even-G1 7 R hyphen"),
+        )
+
+        val completed = G1.collectBondedPairs(devices)
+
+        assertEquals(1, completed.size)
+        val pair = completed.first()
+        assertEquals("Even-G1 7 L hyphen", pair.left.device.name)
+        assertEquals("Even-G1 7 R hyphen", pair.right.device.name)
     }
 
     private fun fakeScanResult(address: String, name: String): ScanResult {

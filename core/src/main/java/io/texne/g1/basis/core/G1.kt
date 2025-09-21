@@ -31,6 +31,7 @@ import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
 import kotlin.time.Duration
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(DelicateCoroutinesApi::class)
@@ -276,8 +277,11 @@ class G1 {
 
         private fun pairingIdentifier(name: String?, address: String): String? {
             val value = name ?: return null
-            val segments = value.split("_")
-            val sideIndex = segments.indexOfFirst { it == "L" || it == "R" }
+            if (!isRecognizedDeviceName(value)) {
+                return null
+            }
+            val segments = normalizedSegments(value)
+            val sideIndex = segments.indexOfFirst { it.equals("L", ignoreCase = true) || it.equals("R", ignoreCase = true) }
             if (sideIndex == -1) {
                 return null
             }
@@ -304,19 +308,28 @@ class G1 {
         }
 
         private fun String.hasSideToken(side: String): Boolean =
-            split("_").any { it == side }
+            normalizedSegments(this).any { it.equals(side, ignoreCase = true) }
 
-        private fun sideFromName(name: String?): G1Gesture.Side? = when {
-            name?.hasSideToken("L") == true -> G1Gesture.Side.LEFT
-            name?.hasSideToken("R") == true -> G1Gesture.Side.RIGHT
-            else -> null
+        private fun sideFromName(name: String?): G1Gesture.Side? {
+            val value = name ?: return null
+            val segments = normalizedSegments(value)
+            val sideIndex = segments.indexOfFirst { it.equals("L", ignoreCase = true) || it.equals("R", ignoreCase = true) }
+            if (sideIndex == -1) {
+                return null
+            }
+            val token = segments[sideIndex]
+            return if (token.equals("L", ignoreCase = true)) {
+                G1Gesture.Side.LEFT
+            } else {
+                G1Gesture.Side.RIGHT
+            }
         }
 
         private fun candidateFromScanResult(result: ScanResult): DeviceCandidate? {
             val device = result.device
             val scanRecordName = result.scanRecord?.deviceName
             val name = scanRecordName ?: result.device.name ?: return null
-            if (!name.startsWith(DEVICE_NAME_PREFIX)) {
+            if (!isRecognizedDeviceName(name)) {
                 return null
             }
             val identifier = pairingIdentifier(name, device.address) ?: return null
@@ -328,12 +341,26 @@ class G1 {
         @SuppressLint("MissingPermission")
         private fun candidateFromDevice(device: BluetoothDevice): DeviceCandidate? {
             val name = device.name ?: return null
-            if (!name.startsWith(DEVICE_NAME_PREFIX)) {
+            if (!isRecognizedDeviceName(name)) {
                 return null
             }
             val identifier = pairingIdentifier(name, device.address) ?: return null
             val side = sideFromName(name) ?: return null
             return DeviceCandidate(device, identifier, side, null)
+        }
+
+        private fun normalizedSegments(value: String): List<String> {
+            val sanitized = if (value.contains("_")) {
+                value
+            } else {
+                value.replace('-', '_').replace(' ', '_')
+            }
+            return sanitized.split("_").filter { it.isNotEmpty() }
+        }
+
+        private fun isRecognizedDeviceName(name: String): Boolean {
+            val normalized = name.lowercase(Locale.US)
+            return normalized.contains("even") || normalized.contains("g1")
         }
 
         @SuppressLint("MissingPermission")
@@ -450,7 +477,7 @@ class G1 {
             val scanner = BluetoothLeScannerCompat.getScanner()
             val settings = ScanSettings.Builder()
                 .setLegacy(false)
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
                 .setReportDelay(0)
                 .build()
             val handler = Handler(Looper.getMainLooper())

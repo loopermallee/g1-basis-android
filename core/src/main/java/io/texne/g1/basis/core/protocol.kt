@@ -1,9 +1,5 @@
 package io.texne.g1.basis.core
 
-// bluetooth device name ---------------------------------------------------------------------------
-
-const val DEVICE_NAME_PREFIX = "Even G1_"
-
 // hardware ids ------------------------------------------------------------------------------------
 
 const val UART_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"

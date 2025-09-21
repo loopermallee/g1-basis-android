@@ -10,11 +10,33 @@ Open, multipurpose infrastructure for writing Android applications that talk to 
 - ⏳ **Phase 5 – Community ecosystem polish (0%).** Not started; future goals include documentation, tooling, and broader release readiness efforts.
 
 ## Core
-The **core** module contains the source code to the core library. 
-This library allows for interfacing directly with the glasses through a simple abstraction that uses modern Android and Kotlin features like coroutines and Flow. 
+The **core** module contains the source code to the core library.
+This library allows for interfacing directly with the glasses through a simple abstraction that uses modern Android and Kotlin features like coroutines and Flow.
 When using this library directly, only one application can connect to and interface with the glasses at one time. The basis core library is used under the hood by the **service**.
 
 *(more details coming soon)*
+
+## BLE pairing insights
+Working directly with the G1 over Bluetooth Low Energy requires accommodating a handful of protocol expectations that differ from typical single-radio peripherals.
+
+### Key protocol behaviors
+- **Dual radios.** The glasses expose independent left and right arm radios. Some commands must be issued to both arms while others are specific to one side, so connection logic should allow multiple simultaneous `BluetoothGatt` sessions.
+- **Nordic UART Service (NUS).** All communication flows through the NUS (UUID `6e400001-b5a3-f393-e0a9-e50e24dcca9e`). Clients must negotiate an MTU (for example, 251 bytes) and subscribe to notifications on the RX characteristic (`6e400003-…`) after connecting.
+- **Heartbeat.** A heartbeat packet (`0x25`) is required roughly every 28–30 seconds. If the device stops receiving heartbeats it will disconnect even if the Android system still shows the link as paired.
+- **Control commands.** Higher-level operations (reboot, microphone toggles, unpair, etc.) are expressed as framed control packets (for example `0x23 0x72` for reboot, `0x0E` for microphone enable/disable). Commands must be sequenced correctly for the glasses to acknowledge them.
+
+### Common reasons scans fail
+- **Scan filters that are too strict.** Some firmware revisions advertise only manufacturer data until a bond exists, so requiring the NUS UUID in your `ScanFilter` can hide both radios.
+- **Ignoring the second radio.** Treat the left and right arms as separate peripherals during discovery to avoid missing the one that happens to be advertising.
+- **Missing runtime permissions.** Android 12 and newer require both `BLUETOOTH_SCAN` and `BLUETOOTH_CONNECT`; without them no scan results appear.
+- **Skipping bonded devices.** When the Even app or Android system pairs with the glasses they appear in `BluetoothAdapter.getBondedDevices()`. Connecting directly to those entries avoids scanning entirely.
+
+### Recommended pairing workflow
+1. **Check bonded devices first.** On the "Find Glasses" flow query `BluetoothAdapter.getBondedDevices()`, look for names containing "Even" or "G1", and call `device.connectGatt()` immediately when found.
+2. **Fallback to a broad scan.** If no bonded devices match, issue an unrestricted scan (`ScanFilter.Builder().build()` with `SCAN_MODE_BALANCED`) for ~10 seconds, then confirm the NUS service during discovery.
+3. **Support both radios.** Maintain connections to each arm as needed, duplicating commands that must reach both sides (such as silent mode) while targeting left/right-specific commands appropriately.
+4. **Negotiate MTU and start heartbeats.** After connecting request a larger MTU (e.g., 251 bytes) and schedule heartbeat writes every 28–30 seconds to keep the link alive.
+5. **Surface diagnostics.** Log the pairing path taken (bonded device vs. scan) and critical lifecycle events (MTU negotiation, heartbeat scheduling) to improve debugging and UX when pairing fails.
 
 ## Service
 The **service** module implements a shared Android service that multiple applications can use to interface simultaneously with the glasses.  
