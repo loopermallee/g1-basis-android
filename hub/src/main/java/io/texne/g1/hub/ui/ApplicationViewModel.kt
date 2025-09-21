@@ -123,7 +123,12 @@ class ApplicationViewModel @Inject constructor(
         retryCountdowns,
         retryCounts,
         statusAndError
-    ) { serviceState, section, retries, retryStats, statusAndErrorPair ->
+    ) { args ->
+        val serviceState = args.getOrNull(0) as? Repository.ServiceSnapshot
+        val section = args.getOrNull(1) as? AppSection ?: AppSection.GLASSES
+        val retries = args.getOrNull(2) as? Map<String, RetryCountdown> ?: emptyMap()
+        val retryStats = args.getOrNull(3) as? Map<String, Int> ?: emptyMap()
+        val statusAndErrorPair = args.getOrNull(4) as? Pair<String?, String?> ?: (null to null)
         val (statusText, errorText) = statusAndErrorPair
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
