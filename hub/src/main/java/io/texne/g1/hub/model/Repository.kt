@@ -4,6 +4,7 @@ import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceManager
+import io.texne.g1.basis.client.MAX_CHARACTERS_PER_LINE
 import io.texne.g1.basis.service.protocol.RSSI_UNKNOWN
 import io.texne.g1.basis.service.protocol.SIGNAL_STRENGTH_UNKNOWN
 import javax.inject.Inject
@@ -162,7 +163,17 @@ class Repository @Inject constructor(
     }
 
     private fun sanitizePages(pages: List<List<String>>): List<List<String>> =
-        pages.map { it.take(MAX_LINES_PER_PAGE) }.filter { it.isNotEmpty() }
+        pages.map { page ->
+            page
+                .take(MAX_LINES_PER_PAGE)
+                .map { line ->
+                    if (line.length <= MAX_CHARACTERS_PER_LINE) {
+                        line
+                    } else {
+                        line.take(MAX_CHARACTERS_PER_LINE)
+                    }
+                }
+        }.filter { it.isNotEmpty() }
 
     private suspend fun displayCenteredPage(
         glassesId: String,

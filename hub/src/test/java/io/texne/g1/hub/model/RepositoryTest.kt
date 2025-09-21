@@ -9,6 +9,7 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.slot
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceManager
+import io.texne.g1.basis.client.MAX_CHARACTERS_PER_LINE
 import kotlinx.coroutines.test.runTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -100,5 +101,20 @@ class RepositoryTest {
 
         assertFalse(result)
         coVerify(exactly = 0) { service.displayFormattedPage(any(), any()) }
+    }
+
+    @Test
+    fun `displayCenteredPageOnConnectedGlasses clamps lines to service limit`() = runTest {
+        val longLine = "A".repeat(MAX_CHARACTERS_PER_LINE * 2)
+        val pages = listOf(listOf(longLine))
+        val formattedPage = slot<G1ServiceCommon.FormattedPage>()
+        coEvery { service.displayFormattedPage(connectedGlasses.id, capture(formattedPage)) } returns true
+
+        val result = repository.displayCenteredPageOnConnectedGlasses(pages, pageIndex = 0)
+
+        assertTrue(result)
+        val renderedLine = formattedPage.captured.lines.first().text
+        assertEquals(MAX_CHARACTERS_PER_LINE, renderedLine.length)
+        assertEquals(longLine.take(MAX_CHARACTERS_PER_LINE), renderedLine)
     }
 }
