@@ -46,6 +46,7 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
                     "Auto-connecting to ${message.glassesName}"
                 is ApplicationViewModel.UiMessage.AutoConnectFailed ->
                     "Auto-connect failed for ${message.glassesName}"
+                is ApplicationViewModel.UiMessage.Snackbar -> message.text
             }
             snackbarHostState.showSnackbar(text)
         }
@@ -75,11 +76,15 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
                         serviceStatus = state.serviceStatus,
                         nearbyGlasses = state.nearbyGlasses,
                         retryCountdowns = state.retryCountdowns,
+                        connectionFeedback = state.connectionFeedback,
+                        statusMessage = state.statusMessage,
+                        errorMessage = state.errorMessage,
                         scan = { viewModel.scan() },
                         connect = { viewModel.connect(it) },
                         disconnect = { viewModel.disconnect(it) },
                         cancelRetry = { viewModel.cancelAutoRetry(it) },
-                        retryNow = { viewModel.retryNow(it) }
+                        retryNow = { viewModel.retryNow(it) },
+                        onBondedConnect = { viewModel.tryBondedConnect() }
                     )
                 }
             }

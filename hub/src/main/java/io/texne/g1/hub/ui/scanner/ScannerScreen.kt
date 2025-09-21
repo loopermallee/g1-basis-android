@@ -30,8 +30,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.texne.g1.basis.client.G1ServiceCommon
@@ -49,11 +51,15 @@ fun ScannerScreen(
     serviceStatus: G1ServiceCommon.ServiceStatus,
     nearbyGlasses: List<GlassesSnapshot>?,
     retryCountdowns: Map<String, ApplicationViewModel.RetryCountdown>,
+    connectionFeedback: ApplicationViewModel.ConnectionFeedback?,
+    statusMessage: String?,
+    errorMessage: String?,
     scan: () -> Unit,
     connect: (id: String) -> Unit,
     disconnect: (id: String) -> Unit,
     cancelRetry: (id: String) -> Unit,
-    retryNow: (id: String) -> Unit
+    retryNow: (id: String) -> Unit,
+    onBondedConnect: () -> Unit
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
 
@@ -64,16 +70,36 @@ fun ScannerScreen(
         state = pullToRefreshState,
     ) {
         Column(Modifier.fillMaxSize()) {
-            ServiceStatusBanner(
-                status = serviceStatus,
-                onRetry = scan
-            )
+            if (connectionFeedback?.type != ApplicationViewModel.ConnectionFeedback.Type.Success) {
+                ServiceStatusBanner(
+                    status = serviceStatus,
+                    onRetry = scan
+                )
+            }
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = if (
                     nearbyGlasses.isNullOrEmpty()
                 ) Arrangement.Center else Arrangement.spacedBy(32.dp)
             ) {
+                if (connectionFeedback != null) {
+                    item {
+                        ConnectionFeedbackCard(
+                            feedback = connectionFeedback,
+                            onBondedConnect = onBondedConnect
+                        )
+                    }
+                }
+                if (!statusMessage.isNullOrEmpty()) {
+                    item {
+                        StatusMessageCard(statusMessage)
+                    }
+                }
+                if (!errorMessage.isNullOrEmpty() && connectionFeedback == null) {
+                    item {
+                        ErrorMessageCard(errorMessage, onBondedConnect)
+                    }
+                }
             when {
                 nearbyGlasses.isNullOrEmpty().not() -> {
                     items(nearbyGlasses!!.size) { index ->
@@ -111,14 +137,9 @@ fun ScannerScreen(
                     }
                 }
 
-                nearbyGlasses != null -> {
+                nearbyGlasses != null && connectionFeedback == null -> {
                     item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("No glasses were found nearby.")
-                        }
+                        NoDevicesFoundCard(onBondedConnect)
                     }
                 }
             }
@@ -140,17 +161,27 @@ private fun ServiceStatusBanner(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .background(Color.White, RoundedCornerShape(12.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp)
+                        Text(
+                            text = "Looking for nearby glasses…",
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Gray
+                        )
+                    }
                     Text(
-                        text = "Looking for nearby glasses…",
-                        fontWeight = FontWeight.SemiBold,
+                        text = "Tip: If you paired via the Even app, we’ll try your bonded device first.",
+                        fontSize = 12.sp,
                         color = Color.Gray
                     )
                 }
@@ -195,6 +226,188 @@ private fun ServiceStatusBanner(
             }
         }
         else -> {}
+    }
+}
+
+@Composable
+private fun ConnectionFeedbackCard(
+    feedback: ApplicationViewModel.ConnectionFeedback,
+    onBondedConnect: () -> Unit
+) {
+    val isSuccess = feedback.type == ApplicationViewModel.ConnectionFeedback.Type.Success
+    val scale = if (isSuccess) {
+        val transition = rememberInfiniteTransition(label = "connectionCatPulse")
+        val pulse by transition.animateFloat(
+            initialValue = 0.92f,
+            targetValue = 1.05f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = { it }),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "connectionPulse"
+        )
+        pulse
+    } else {
+        1f
+    }
+    val catPainter = if (isSuccess) R.drawable.cat_with_glasses else R.drawable.cat_without_glasses
+    val description = if (isSuccess) {
+        "Happy cat wearing glasses"
+    } else {
+        "Cat without glasses showing a connection problem"
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(20.dp))
+                .padding(vertical = 24.dp, horizontal = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Crossfade(targetState = catPainter, label = "catSwitch") { resource ->
+                Image(
+                    painter = painterResource(resource),
+                    contentDescription = description,
+                    modifier = Modifier
+                        .size(160.dp)
+                        .graphicsLayer(scaleX = scale, scaleY = scale)
+                )
+            }
+            Text(
+                text = feedback.title,
+                fontWeight = FontWeight.Bold,
+                color = if (isSuccess) Color(0xFF06402B) else Color.Black,
+                fontSize = 18.sp,
+                textAlign = TextAlign.Center
+            )
+            feedback.subtitle?.let { subtitle ->
+                Text(
+                    text = subtitle,
+                    fontSize = 13.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
+                )
+            }
+            if (feedback.type == ApplicationViewModel.ConnectionFeedback.Type.Failure) {
+                Button(
+                    onClick = onBondedConnect,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Black,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Try Bonded Connect Again")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusMessageCard(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = message,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            Text(
+                text = "We’ll automatically stop scanning once we connect.",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+        }
+    }
+}
+
+@Composable
+private fun ErrorMessageCard(
+    message: String,
+    onBondedConnect: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = message,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            Button(
+                onClick = onBondedConnect,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Black,
+                    contentColor = Color.White
+                )
+            ) {
+                Text("Try Bonded Connect")
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoDevicesFoundCard(onBondedConnect: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "No glasses were found nearby.",
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            Text(
+                text = "Tip: Unfold glasses, close the Even app, toggle Bluetooth, and retry.",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+            Button(
+                onClick = onBondedConnect,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Black,
+                    contentColor = Color.White
+                )
+            ) {
+                Text("Try Bonded Connect")
+            }
+        }
     }
 }
 
