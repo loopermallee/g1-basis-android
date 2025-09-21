@@ -133,7 +133,13 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
                 ).await()
                 true
             } catch (e: Exception) {
-                // the request failed
+                val attemptNumber = 3 - attemptsRemaining
+                val status = writableConnectionState.value
+                Log.e(
+                    "G1BLEManager",
+                    "Failed to send packet on attempt $attemptNumber (status=$status): ${e.message}",
+                    e
+                )
                 false
             }
         }
