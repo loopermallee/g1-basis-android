@@ -123,109 +123,118 @@ private fun ChatContent(
         }
     }
 
+    val pageScrollState = rememberScrollState()
+
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = modifier.fillMaxSize()
     ) {
-        Text(
-            text = "ChatGPT Assistant",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
-        )
-
-        ConnectionStatus(connectedGlassesName)
-
-        if (!state.apiKeyAvailable) {
-            ApiKeyWarningCard(onNavigateToSettings = onNavigateToSettings)
-        }
-
-        PersonaSelector(
-            personas = state.availablePersonas,
-            selected = state.selectedPersona,
-            onPersonaSelected = onPersonaSelected
-        )
-
-        TodoHudPanel(
-            state = todoState,
-            onToggleTask = onToggleTask,
-            onMoveTaskUp = onMoveTaskUp,
-            onMoveTaskDown = onMoveTaskDown,
-            onDisplayModeSelected = onDisplayModeSelected,
-            onExpandTask = onExpandTask,
-            onCollapseExpanded = onCollapseExpanded,
-            onNextPage = onNextTodoPage,
-            onPreviousPage = onPreviousTodoPage,
-            onClearHudError = onClearTodoHudError
-        )
-
-        if (state.errorMessage != null) {
-            ErrorCard(message = state.errorMessage, onDismiss = onDismissError)
-        }
-
-        when (val hudStatus = state.hudStatus) {
-            is ChatViewModel.HudStatus.DisplayFailed -> {
-                HudStatusCard(
-                    text = "Unable to display response on the HUD. Check the connection and try again.",
-                    highlight = true,
-                    onDismiss = onHudStatusConsumed
-                )
-            }
-            is ChatViewModel.HudStatus.Displayed -> {
-                val message = when {
-                    hudStatus.pageCount > 1 && hudStatus.truncated ->
-                        "Response paginated across ${hudStatus.pageCount} HUD pages (trimmed to fit width)."
-                    hudStatus.pageCount > 1 ->
-                        if (hudStatus.pageCount == 2) {
-                            "Response paginated across 2 HUD pages."
-                        } else {
-                            "Response paginated across ${hudStatus.pageCount} HUD pages."
-                        }
-                    hudStatus.truncated ->
-                        "Response shown on the HUD (trimmed to fit)."
-                    else ->
-                        "Response sent to the HUD."
-                }
-                HudStatusCard(text = message, onDismiss = onHudStatusConsumed)
-            }
-            ChatViewModel.HudStatus.Idle -> Unit
-        }
-
-        Card(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                .weight(1f)
+                .verticalScroll(pageScrollState)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (state.isSending) {
-                LoadingIndicator()
+            Text(
+                text = "ChatGPT Assistant",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+
+            ConnectionStatus(connectedGlassesName)
+
+            if (!state.apiKeyAvailable) {
+                ApiKeyWarningCard(onNavigateToSettings = onNavigateToSettings)
             }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                if (state.messages.isEmpty()) {
-                    item {
-                        Text(
-                            text = "Ask anything to get started.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+            PersonaSelector(
+                personas = state.availablePersonas,
+                selected = state.selectedPersona,
+                onPersonaSelected = onPersonaSelected
+            )
+
+            TodoHudPanel(
+                state = todoState,
+                onToggleTask = onToggleTask,
+                onMoveTaskUp = onMoveTaskUp,
+                onMoveTaskDown = onMoveTaskDown,
+                onDisplayModeSelected = onDisplayModeSelected,
+                onExpandTask = onExpandTask,
+                onCollapseExpanded = onCollapseExpanded,
+                onNextPage = onNextTodoPage,
+                onPreviousPage = onPreviousTodoPage,
+                onClearHudError = onClearTodoHudError
+            )
+
+            if (state.errorMessage != null) {
+                ErrorCard(message = state.errorMessage, onDismiss = onDismissError)
+            }
+
+            when (val hudStatus = state.hudStatus) {
+                is ChatViewModel.HudStatus.DisplayFailed -> {
+                    HudStatusCard(
+                        text = "Unable to display response on the HUD. Check the connection and try again.",
+                        highlight = true,
+                        onDismiss = onHudStatusConsumed
+                    )
+                }
+                is ChatViewModel.HudStatus.Displayed -> {
+                    val message = when {
+                        hudStatus.pageCount > 1 && hudStatus.truncated ->
+                            "Response paginated across ${hudStatus.pageCount} HUD pages (trimmed to fit width)."
+                        hudStatus.pageCount > 1 ->
+                            if (hudStatus.pageCount == 2) {
+                                "Response paginated across 2 HUD pages."
+                            } else {
+                                "Response paginated across ${hudStatus.pageCount} HUD pages."
+                            }
+                        hudStatus.truncated ->
+                            "Response shown on the HUD (trimmed to fit)."
+                        else ->
+                            "Response sent to the HUD."
                     }
-                } else {
-                    items(state.messages, key = { it.id }) { message ->
-                        MessageBubble(message = message)
+                    HudStatusCard(text = message, onDismiss = onHudStatusConsumed)
+                }
+                ChatViewModel.HudStatus.Idle -> Unit
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 240.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                if (state.isSending) {
+                    LoadingIndicator()
+                }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (state.messages.isEmpty()) {
+                        item {
+                            Text(
+                                text = "Ask anything to get started.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        items(state.messages, key = { it.id }) { message ->
+                            MessageBubble(message = message)
+                        }
                     }
                 }
             }
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {

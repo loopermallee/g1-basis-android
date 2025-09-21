@@ -10,11 +10,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
@@ -37,23 +38,25 @@ fun GlassesScreen(
     glasses: GlassesSnapshot,
     disconnect: () -> Unit
 ) {
-    Box(
-        Modifier.fillMaxSize()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
             .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .verticalScroll(rememberScrollState())
     ) {
         Box(
-            Modifier.fillMaxSize()
+            Modifier
+                .fillMaxWidth()
                 .background(Color.White, RoundedCornerShape(16.dp))
         ) {
             Column(
-                Modifier
+                modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(2.5f)
                     .padding(16.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Row(
-                    Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(Modifier.weight(1f)) {
@@ -65,7 +68,9 @@ fun GlassesScreen(
                         )
                     }
                     Box(
-                        Modifier.weight(1f).padding(8.dp),
+                        Modifier
+                            .weight(1f)
+                            .padding(8.dp),
                         contentAlignment = Alignment.CenterEnd
                     ) {
                         Button(

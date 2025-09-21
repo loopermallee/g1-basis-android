@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
@@ -44,7 +47,10 @@ fun SubtitlesScreen(
     val state = viewModel.state.collectAsState().value
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(32.dp)
     ) {
         Box(
@@ -101,9 +107,17 @@ fun SubtitlesScreen(
                 }
             }
             Box(
-                modifier = Modifier.fillMaxSize().border(1.dp, Color.White, RoundedCornerShape(16.dp)).weight(1f)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 240.dp)
+                    .border(1.dp, Color.White, RoundedCornerShape(16.dp))
             ) {
-                Column(modifier = Modifier.padding(32.dp).fillMaxSize(), verticalArrangement = Arrangement.Bottom) {
+                Column(
+                    modifier = Modifier
+                        .padding(32.dp)
+                        .fillMaxSize(),
+                    verticalArrangement = Arrangement.Bottom
+                ) {
                     state.displayText.forEach {
                         Text(it, color = Color.Green)
                     }
