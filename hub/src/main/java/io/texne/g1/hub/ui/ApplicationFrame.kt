@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.texne.g1.hub.ui.chat.ChatScreen
+import io.texne.g1.hub.ui.debug.DebugPanelScreen
 import io.texne.g1.hub.ui.settings.SettingsScreen
 import io.texne.g1.hub.ui.telemetry.TelemetryScreen
 
@@ -95,6 +96,9 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
                     onNavigateToSettings = { viewModel.selectSection(AppSection.SETTINGS) }
                 )
             }
+            AppSection.DEBUG -> {
+                DebugPanelScreen(snackbarHostState = snackbarHostState)
+            }
             AppSection.SETTINGS -> {
                 SettingsScreen()
             }
@@ -154,5 +158,6 @@ enum class AppSection(val label: String) {
     GLASSES("Glasses"),
     TELEMETRY("Telemetry"),
     ASSISTANT("Assistant"),
+    DEBUG("Debug"),
     SETTINGS("Settings")
 }
