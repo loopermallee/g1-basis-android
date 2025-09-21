@@ -62,6 +62,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.hilt.android)
     implementation(libs.hilt.navigation.compose)
+    implementation(libs.nordic.scanner)
     implementation(project(":service"))
     implementation(project(":client"))
     implementation(project(":aidl"))

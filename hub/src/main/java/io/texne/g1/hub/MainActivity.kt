@@ -1,9 +1,14 @@
 package io.texne.g1.hub
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -12,6 +17,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.ui.ApplicationFrame
@@ -20,13 +26,32 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity: ComponentActivity() {
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
     @Inject
     lateinit var repository: Repository
+
+    private val bluetoothPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            if (results[Manifest.permission.BLUETOOTH_CONNECT] == false) {
+                Log.w(TAG, "PERM_MISSING=CONNECT")
+            }
+            val scanDenied = results[Manifest.permission.BLUETOOTH_SCAN] == false ||
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+                    results[Manifest.permission.ACCESS_FINE_LOCATION] == false)
+            if (scanDenied) {
+                Log.w(TAG, "PERM_MISSING=SCAN")
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         repository.bindService()
+        requestBluetoothPermissions()
 
         enableEdgeToEdge()
         setContent {
@@ -47,5 +72,28 @@ class MainActivity: ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         repository.unbindService()
+    }
+
+    private fun requestBluetoothPermissions() {
+        val permissions = requiredPermissions()
+        if (permissions.isEmpty()) {
+            return
+        }
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            bluetoothPermissionLauncher.launch(permissions)
+        }
+    }
+
+    private fun requiredPermissions(): Array<String> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return arrayOf(
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_SCAN
+            )
+        }
+        return arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 }

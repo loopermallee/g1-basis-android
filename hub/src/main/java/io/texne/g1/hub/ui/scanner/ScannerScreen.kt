@@ -49,11 +49,14 @@ fun ScannerScreen(
     serviceStatus: G1ServiceCommon.ServiceStatus,
     nearbyGlasses: List<GlassesSnapshot>?,
     retryCountdowns: Map<String, ApplicationViewModel.RetryCountdown>,
+    statusMessage: String?,
+    errorMessage: String?,
     scan: () -> Unit,
     connect: (id: String) -> Unit,
     disconnect: (id: String) -> Unit,
     cancelRetry: (id: String) -> Unit,
-    retryNow: (id: String) -> Unit
+    retryNow: (id: String) -> Unit,
+    onBondedConnect: () -> Unit
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
 
@@ -74,54 +77,59 @@ fun ScannerScreen(
                     nearbyGlasses.isNullOrEmpty()
                 ) Arrangement.Center else Arrangement.spacedBy(32.dp)
             ) {
-            when {
-                nearbyGlasses.isNullOrEmpty().not() -> {
-                    items(nearbyGlasses!!.size) { index ->
-                        val glasses = nearbyGlasses[index]
-                        GlassesItem(
-                            glasses = glasses,
-                            retryCountdown = retryCountdowns[glasses.id],
-                            connect = { connect(glasses.id) },
-                            disconnect = { disconnect(glasses.id) },
-                            cancelRetry = { cancelRetry(glasses.id) },
-                            retryNow = { retryNow(glasses.id) }
-                        )
+                if (!statusMessage.isNullOrEmpty()) {
+                    item {
+                        StatusMessageCard(statusMessage)
                     }
                 }
-
-                scanning -> {
+                if (!errorMessage.isNullOrEmpty()) {
                     item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("Scanning for nearby glasses...")
+                        ErrorMessageCard(errorMessage, onBondedConnect)
+                    }
+                }
+                when {
+                    nearbyGlasses.isNullOrEmpty().not() -> {
+                        items(nearbyGlasses!!.size) { index ->
+                            val glasses = nearbyGlasses[index]
+                            GlassesItem(
+                                glasses = glasses,
+                                retryCountdown = retryCountdowns[glasses.id],
+                                connect = { connect(glasses.id) },
+                                disconnect = { disconnect(glasses.id) },
+                                cancelRetry = { cancelRetry(glasses.id) },
+                                retryNow = { retryNow(glasses.id) }
+                            )
+                        }
+                    }
+
+                    scanning -> {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("Scanning for nearby glasses...")
+                            }
+                        }
+                    }
+
+                    error -> {
+                        item {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("An error ocurred. Please try again.")
+                            }
+                        }
+                    }
+
+                    nearbyGlasses != null -> {
+                        item {
+                            NoDevicesFoundCard(onBondedConnect)
                         }
                     }
                 }
-
-                error -> {
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("An error ocurred. Please try again.")
-                        }
-                    }
-                }
-
-                nearbyGlasses != null -> {
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("No glasses were found nearby.")
-                        }
-                    }
-                }
-            }
             }
         }
     }
@@ -140,17 +148,27 @@ private fun ServiceStatusBanner(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .background(Color.White, RoundedCornerShape(12.dp))
                         .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(color = Color.Black, strokeWidth = 2.dp)
+                        Text(
+                            text = "Looking for nearby glasses…",
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Gray
+                        )
+                    }
                     Text(
-                        text = "Looking for nearby glasses…",
-                        fontWeight = FontWeight.SemiBold,
+                        text = "Tip: If you paired via the Even app, we’ll try your bonded device first.",
+                        fontSize = 12.sp,
                         color = Color.Gray
                     )
                 }
@@ -195,6 +213,96 @@ private fun ServiceStatusBanner(
             }
         }
         else -> {}
+    }
+}
+
+@Composable
+private fun StatusMessageCard(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            modifier = Modifier
+                .background(Color.White, RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = text, fontWeight = FontWeight.SemiBold, color = Color.Black)
+        }
+    }
+}
+
+@Composable
+private fun ErrorMessageCard(message: String, onBondedConnect: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .background(Color.White, RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(message, fontWeight = FontWeight.SemiBold, color = Color.Black)
+            Button(
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(169, 11, 11, 255),
+                    contentColor = Color.White
+                ),
+                onClick = onBondedConnect
+            ) {
+                Text("Try Bonded Connect")
+            }
+            Text(
+                text = "If connection fails: Force stop Even/MentraOS, unfold glasses, toggle Bluetooth, and retry.",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoDevicesFoundCard(onBondedConnect: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .background(Color.White, RoundedCornerShape(12.dp))
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "No glasses were found nearby.",
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            Button(
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(169, 11, 11, 255),
+                    contentColor = Color.White
+                ),
+                onClick = onBondedConnect
+            ) {
+                Text("Try Bonded Connect")
+            }
+            Text(
+                text = "Tip: If you paired via the Even app, we’ll try your bonded device first.",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
+        }
     }
 }
 

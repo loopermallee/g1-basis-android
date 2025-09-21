@@ -1,13 +1,22 @@
 package io.texne.g1.hub.ui
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceCommon.ServiceStatus
+import io.texne.g1.hub.ble.G1Connector
 import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.model.Repository.GlassesSnapshot
 import io.texne.g1.hub.preferences.AssistantPreferences
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
@@ -20,13 +29,25 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class ApplicationViewModel @Inject constructor(
     private val repository: Repository,
-    private val assistantPreferences: AssistantPreferences
+    private val assistantPreferences: AssistantPreferences,
+    private val connector: G1Connector,
+    @ApplicationContext private val appContext: Context
 ): ViewModel() {
+
+    companion object {
+        private const val TAG = "ApplicationVM"
+        private const val STATUS_LOOKING = "Looking for glasses…"
+        private const val STATUS_CONNECTED = "Connected"
+        private const val STATUS_TRY_BONDED = "Trying bonded connect…"
+        private const val PERMISSION_MESSAGE = "Bluetooth permission is required. Please allow 'Nearby devices'."
+        private const val FAILURE_MESSAGE = "Couldn’t find/connect to glasses.\nTips: Unfold glasses, close the Even app (MentraOS), toggle Bluetooth, and retry."
+    }
 
     data class RetryCountdown(
         val secondsRemaining: Int,
@@ -41,7 +62,9 @@ class ApplicationViewModel @Inject constructor(
         val nearbyGlasses: List<GlassesSnapshot>? = null,
         val selectedSection: AppSection = AppSection.GLASSES,
         val retryCountdowns: Map<String, RetryCountdown> = emptyMap(),
-        val telemetryEntries: List<TelemetryEntry> = emptyList()
+        val telemetryEntries: List<TelemetryEntry> = emptyList(),
+        val statusMessage: String? = null,
+        val errorMessage: String? = null
     )
 
     data class TelemetryEntry(
@@ -56,6 +79,7 @@ class ApplicationViewModel @Inject constructor(
     sealed class UiMessage {
         data class AutoConnectTriggered(val glassesName: String) : UiMessage()
         data class AutoConnectFailed(val glassesName: String) : UiMessage()
+        data class Snackbar(val text: String) : UiMessage()
     }
 
     private enum class AttemptType { MANUAL, AUTO }
@@ -73,6 +97,8 @@ class ApplicationViewModel @Inject constructor(
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
     private val retryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    private val statusMessage = MutableStateFlow<String?>(null)
+    private val errorMessage = MutableStateFlow<String?>(null)
 
     private val messages = MutableSharedFlow<UiMessage>(
         replay = 0,
@@ -97,8 +123,10 @@ class ApplicationViewModel @Inject constructor(
         repository.getServiceStateFlow(),
         selectedSection,
         retryCountdowns,
-        retryCounts
-    ) { serviceState, section, retries, retryStats ->
+        retryCounts,
+        statusMessage,
+        errorMessage
+    ) { serviceState, section, retries, retryStats, statusText, errorText ->
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
@@ -116,12 +144,32 @@ class ApplicationViewModel @Inject constructor(
                     rssi = glasses.rssi,
                     retryCount = retryStats[glasses.id] ?: 0
                 )
-            } ?: emptyList()
+            } ?: emptyList(),
+            statusMessage = statusText,
+            errorMessage = errorText
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, State())
 
     fun scan() {
-        repository.startLooking()
+        viewModelScope.launch {
+            if (!ensureScanPermissions()) {
+                return@launch
+            }
+            showStatus(STATUS_LOOKING)
+            repository.startLooking()
+            val success = try {
+                connector.connectSmart()
+            } catch (error: Throwable) {
+                Log.w(TAG, "connectSmart error", error)
+                false
+            }
+            if (success) {
+                showStatus(STATUS_CONNECTED)
+                notify(UiMessage.Snackbar("Connected to glasses"))
+            } else {
+                showConnectionFailure()
+            }
+        }
     }
 
     fun connect(id: String) {
@@ -132,6 +180,7 @@ class ApplicationViewModel @Inject constructor(
         connectionAttempts[id] = attempt
         updateRetryCount(id, attempt.retryCount)
         clearRetryCountdown(id, removeRequest = false)
+        clearStatus()
         viewModelScope.launch {
             repository.connectGlasses(id)
         }
@@ -139,6 +188,7 @@ class ApplicationViewModel @Inject constructor(
 
     fun disconnect(id: String) {
         clearRetryCountdown(id, removeRequest = true)
+        clearStatus()
         repository.disconnectGlasses(id)
     }
 
@@ -149,6 +199,28 @@ class ApplicationViewModel @Inject constructor(
     fun retryNow(id: String) {
         clearRetryCountdown(id, removeRequest = false)
         connect(id)
+    }
+
+    fun tryBondedConnect() {
+        viewModelScope.launch {
+            if (!ensureConnectPermission()) {
+                return@launch
+            }
+            showStatus(STATUS_TRY_BONDED)
+            val success = try {
+                withContext(Dispatchers.IO) { connector.tryBondedConnect() }
+            } catch (error: Throwable) {
+                Log.w(TAG, "tryBondedConnect error", error)
+                false
+            }
+            if (success) {
+                showStatus(STATUS_CONNECTED)
+                notify(UiMessage.Snackbar("Bonded connect succeeded"))
+            } else {
+                showConnectionFailure()
+                repository.startLooking()
+            }
+        }
     }
 
     fun selectSection(section: AppSection) {
@@ -162,6 +234,64 @@ class ApplicationViewModel @Inject constructor(
         viewModelScope.launch {
             messages.emit(message)
         }
+    }
+
+    private fun showStatus(text: String) {
+        statusMessage.value = text
+        errorMessage.value = null
+    }
+
+    private fun showConnectionFailure() {
+        statusMessage.value = null
+        errorMessage.value = FAILURE_MESSAGE
+        Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
+        notify(UiMessage.Snackbar(FAILURE_MESSAGE))
+    }
+
+    private fun showPermissionError() {
+        statusMessage.value = null
+        errorMessage.value = PERMISSION_MESSAGE
+        notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
+    }
+
+    private fun clearStatus() {
+        statusMessage.value = null
+        errorMessage.value = null
+    }
+
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(appContext, permission) == PackageManager.PERMISSION_GRANTED
+
+    private fun ensureScanPermissions(): Boolean {
+        var missing = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+                Log.w(TAG, "PERM_MISSING=CONNECT")
+                missing = true
+            }
+            if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) {
+                Log.w(TAG, "PERM_MISSING=SCAN")
+                missing = true
+            }
+        } else {
+            if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
+                Log.w(TAG, "PERM_MISSING=SCAN")
+                missing = true
+            }
+        }
+        if (missing) {
+            showPermissionError()
+        }
+        return !missing
+    }
+
+    private fun ensureConnectPermission(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
+            Log.w(TAG, "PERM_MISSING=CONNECT")
+            showPermissionError()
+            return false
+        }
+        return true
     }
 
     private fun updateRetryCount(id: String, count: Int) {
