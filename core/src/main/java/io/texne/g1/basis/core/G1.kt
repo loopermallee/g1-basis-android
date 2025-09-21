@@ -314,7 +314,8 @@ class G1 {
 
         private fun candidateFromScanResult(result: ScanResult): DeviceCandidate? {
             val device = result.device
-            val name = result.scanRecord?.deviceName ?: device.name ?: return null
+            val scanRecordName = result.scanRecord?.deviceName
+            val name = scanRecordName ?: result.device.name ?: return null
             if (!name.startsWith(DEVICE_NAME_PREFIX)) {
                 return null
             }
