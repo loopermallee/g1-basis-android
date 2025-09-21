@@ -1,21 +1,15 @@
 package io.texne.g1.hub.ui
 
-import android.Manifest
-import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
-import android.util.Log
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceCommon.ServiceStatus
 import io.texne.g1.hub.ble.G1Connector
 import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.model.Repository.GlassesSnapshot
 import io.texne.g1.hub.preferences.AssistantPreferences
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
@@ -30,15 +24,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
+import android.util.Log
 
 @HiltViewModel
 class ApplicationViewModel @Inject constructor(
     private val repository: Repository,
     private val assistantPreferences: AssistantPreferences,
-    private val connector: G1Connector,
-    @ApplicationContext private val appContext: Context
-): ViewModel() {
+    private val connector: G1Connector
+) : ViewModel() {
 
     companion object {
         private const val TAG = "ApplicationVM"
@@ -47,6 +40,7 @@ class ApplicationViewModel @Inject constructor(
         private const val STATUS_TRY_BONDED = "Trying bonded connect…"
         private const val PERMISSION_MESSAGE = "Bluetooth permission is required. Please allow 'Nearby devices'."
         private const val FAILURE_MESSAGE = "Couldn’t find/connect to glasses.\nTips: Unfold glasses, close the Even app (MentraOS), toggle Bluetooth, and retry."
+        private const val RETRY_DELAY_SECONDS = 10
     }
 
     data class RetryCountdown(
@@ -152,27 +146,31 @@ class ApplicationViewModel @Inject constructor(
 
     fun scan() {
         viewModelScope.launch {
-            if (!ensureScanPermissions()) {
-                return@launch
-            }
             showStatus(STATUS_LOOKING)
             repository.startLooking()
-            val success = try {
-                connector.connectSmart()
+            val result = try {
+                withContext(Dispatchers.IO) { connector.connectSmart() }
             } catch (error: Throwable) {
                 Log.w(TAG, "connectSmart error", error)
-                false
+                G1Connector.Result.NotFound
             }
-            if (success) {
-                showStatus(STATUS_CONNECTED)
-                notify(UiMessage.Snackbar("Connected to glasses"))
-            } else {
-                showConnectionFailure()
+            when (result) {
+                is G1Connector.Result.Success -> {
+                    showStatus(STATUS_CONNECTED)
+                    notify(UiMessage.Snackbar("Connected to glasses"))
+                }
+                is G1Connector.Result.PermissionMissing -> {
+                    showPermissionError()
+                }
+                is G1Connector.Result.NotFound -> {
+                    showConnectionFailure()
+                }
             }
         }
     }
 
     fun connect(id: String) {
+        clearStatus()
         val attempt = connectionAttempts.getOrPut(id) { AttemptState() }
         attempt.hasAttemptStarted = false
         attempt.lastAttemptType = AttemptType.MANUAL
@@ -180,15 +178,14 @@ class ApplicationViewModel @Inject constructor(
         connectionAttempts[id] = attempt
         updateRetryCount(id, attempt.retryCount)
         clearRetryCountdown(id, removeRequest = false)
-        clearStatus()
         viewModelScope.launch {
             repository.connectGlasses(id)
         }
     }
 
     fun disconnect(id: String) {
-        clearRetryCountdown(id, removeRequest = true)
         clearStatus()
+        clearRetryCountdown(id, removeRequest = true)
         repository.disconnectGlasses(id)
     }
 
@@ -197,28 +194,32 @@ class ApplicationViewModel @Inject constructor(
     }
 
     fun retryNow(id: String) {
+        clearStatus()
         clearRetryCountdown(id, removeRequest = false)
         connect(id)
     }
 
     fun tryBondedConnect() {
         viewModelScope.launch {
-            if (!ensureConnectPermission()) {
-                return@launch
-            }
             showStatus(STATUS_TRY_BONDED)
-            val success = try {
+            val result = try {
                 withContext(Dispatchers.IO) { connector.tryBondedConnect() }
             } catch (error: Throwable) {
                 Log.w(TAG, "tryBondedConnect error", error)
-                false
+                G1Connector.Result.NotFound
             }
-            if (success) {
-                showStatus(STATUS_CONNECTED)
-                notify(UiMessage.Snackbar("Bonded connect succeeded"))
-            } else {
-                showConnectionFailure()
-                repository.startLooking()
+            when (result) {
+                is G1Connector.Result.Success -> {
+                    showStatus(STATUS_CONNECTED)
+                    notify(UiMessage.Snackbar("Bonded connect succeeded"))
+                }
+                is G1Connector.Result.PermissionMissing -> {
+                    showPermissionError()
+                }
+                is G1Connector.Result.NotFound -> {
+                    showConnectionFailure()
+                    repository.startLooking()
+                }
             }
         }
     }
@@ -257,41 +258,6 @@ class ApplicationViewModel @Inject constructor(
     private fun clearStatus() {
         statusMessage.value = null
         errorMessage.value = null
-    }
-
-    private fun hasPermission(permission: String): Boolean =
-        ContextCompat.checkSelfPermission(appContext, permission) == PackageManager.PERMISSION_GRANTED
-
-    private fun ensureScanPermissions(): Boolean {
-        var missing = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (!hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-                Log.w(TAG, "PERM_MISSING=CONNECT")
-                missing = true
-            }
-            if (!hasPermission(Manifest.permission.BLUETOOTH_SCAN)) {
-                Log.w(TAG, "PERM_MISSING=SCAN")
-                missing = true
-            }
-        } else {
-            if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) {
-                Log.w(TAG, "PERM_MISSING=SCAN")
-                missing = true
-            }
-        }
-        if (missing) {
-            showPermissionError()
-        }
-        return !missing
-    }
-
-    private fun ensureConnectPermission(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasPermission(Manifest.permission.BLUETOOTH_CONNECT)) {
-            Log.w(TAG, "PERM_MISSING=CONNECT")
-            showPermissionError()
-            return false
-        }
-        return true
     }
 
     private fun updateRetryCount(id: String, count: Int) {
@@ -390,9 +356,9 @@ class ApplicationViewModel @Inject constructor(
         viewModelScope.launch {
             repository.gestureEvents().collect { gesture ->
                 val preferred = activationPreference.value
-                if(gesture.type == preferred && gesture.side == G1ServiceCommon.GestureSide.RIGHT) {
+                if (gesture.type == preferred && gesture.side == G1ServiceCommon.GestureSide.RIGHT) {
                     activationEvents.emit(gesture)
-                    if(selectedSection.value != AppSection.ASSISTANT) {
+                    if (selectedSection.value != AppSection.ASSISTANT) {
                         selectedSection.value = AppSection.ASSISTANT
                     }
                 }
@@ -460,9 +426,5 @@ class ApplicationViewModel @Inject constructor(
         if (removeRequest) {
             connectionAttempts.remove(id)
         }
-    }
-
-    companion object {
-        private const val RETRY_DELAY_SECONDS = 10
     }
 }

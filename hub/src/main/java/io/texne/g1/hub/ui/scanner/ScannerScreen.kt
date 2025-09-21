@@ -87,49 +87,49 @@ fun ScannerScreen(
                         ErrorMessageCard(errorMessage, onBondedConnect)
                     }
                 }
-                when {
-                    nearbyGlasses.isNullOrEmpty().not() -> {
-                        items(nearbyGlasses!!.size) { index ->
-                            val glasses = nearbyGlasses[index]
-                            GlassesItem(
-                                glasses = glasses,
-                                retryCountdown = retryCountdowns[glasses.id],
-                                connect = { connect(glasses.id) },
-                                disconnect = { disconnect(glasses.id) },
-                                cancelRetry = { cancelRetry(glasses.id) },
-                                retryNow = { retryNow(glasses.id) }
-                            )
-                        }
+            when {
+                nearbyGlasses.isNullOrEmpty().not() -> {
+                    items(nearbyGlasses!!.size) { index ->
+                        val glasses = nearbyGlasses[index]
+                        GlassesItem(
+                            glasses = glasses,
+                            retryCountdown = retryCountdowns[glasses.id],
+                            connect = { connect(glasses.id) },
+                            disconnect = { disconnect(glasses.id) },
+                            cancelRetry = { cancelRetry(glasses.id) },
+                            retryNow = { retryNow(glasses.id) }
+                        )
                     }
+                }
 
-                    scanning -> {
-                        item {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Scanning for nearby glasses...")
-                            }
-                        }
-                    }
-
-                    error -> {
-                        item {
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("An error ocurred. Please try again.")
-                            }
-                        }
-                    }
-
-                    nearbyGlasses != null -> {
-                        item {
-                            NoDevicesFoundCard(onBondedConnect)
+                scanning -> {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Scanning for nearby glasses...")
                         }
                     }
                 }
+
+                error -> {
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("An error ocurred. Please try again.")
+                        }
+                    }
+                }
+
+                nearbyGlasses != null -> {
+                    item {
+                        NoDevicesFoundCard(onBondedConnect)
+                    }
+                }
+            }
             }
         }
     }
@@ -217,54 +217,64 @@ private fun ServiceStatusBanner(
 }
 
 @Composable
-private fun StatusMessageCard(text: String) {
+private fun StatusMessageCard(message: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 16.dp)
     ) {
-        Row(
+        Column(
             modifier = Modifier
-                .background(Color.White, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(text = text, fontWeight = FontWeight.SemiBold, color = Color.Black)
+            Text(
+                text = message,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
+            Text(
+                text = "We’ll automatically stop scanning once we connect.",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
         }
     }
 }
 
 @Composable
-private fun ErrorMessageCard(message: String, onBondedConnect: () -> Unit) {
+private fun ErrorMessageCard(
+    message: String,
+    onBondedConnect: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 16.dp)
     ) {
         Column(
             modifier = Modifier
-                .background(Color.White, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .fillMaxWidth()
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(message, fontWeight = FontWeight.SemiBold, color = Color.Black)
+            Text(
+                text = message,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black
+            )
             Button(
+                onClick = onBondedConnect,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(169, 11, 11, 255),
+                    containerColor = Color.Black,
                     contentColor = Color.White
-                ),
-                onClick = onBondedConnect
+                )
             ) {
                 Text("Try Bonded Connect")
             }
-            Text(
-                text = "If connection fails: Force stop Even/MentraOS, unfold glasses, toggle Bluetooth, and retry.",
-                fontSize = 12.sp,
-                color = Color.Gray
-            )
         }
     }
 }
@@ -274,34 +284,35 @@ private fun NoDevicesFoundCard(onBondedConnect: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
-                .background(Color.White, RoundedCornerShape(12.dp))
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .background(Color.White, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "No glasses were found nearby.",
                 fontWeight = FontWeight.SemiBold,
                 color = Color.Black
             )
-            Button(
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(169, 11, 11, 255),
-                    contentColor = Color.White
-                ),
-                onClick = onBondedConnect
-            ) {
-                Text("Try Bonded Connect")
-            }
             Text(
-                text = "Tip: If you paired via the Even app, we’ll try your bonded device first.",
+                text = "Tip: Unfold glasses, close the Even app, toggle Bluetooth, and retry.",
                 fontSize = 12.sp,
                 color = Color.Gray
             )
+            Button(
+                onClick = onBondedConnect,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Black,
+                    contentColor = Color.White
+                )
+            ) {
+                Text("Try Bonded Connect")
+            }
         }
     }
 }

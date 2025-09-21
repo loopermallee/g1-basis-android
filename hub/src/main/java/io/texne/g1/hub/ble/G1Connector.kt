@@ -16,108 +16,223 @@ import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.core.content.ContextCompat
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanFilter
-import no.nordicsemi.android.support.v18.scanner.ScanResult
+import no.nordicsemi.android.support.v18.scanner.ScanResult as NordicScanResult
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
 
 /**
- * Connection ladder:
- * A) Use Hub/Service connection if present
- * B) Try bonded connect (no scan)
- * C) Fallback to scan (broad first, then filtered)
+ * Implements a three step connection ladder:
+ * 1) Attach to the hub/service if an active connection already exists.
+ * 2) Attempt a bonded connection without scanning.
+ * 3) Fallback to a broad scan followed by a filtered pass.
  */
-class G1Connector(private val ctx: Context) {
+@Singleton
+class G1Connector @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
+
+    sealed class Result {
+        data object Success : Result()
+        data object PermissionMissing : Result()
+        data object NotFound : Result()
+    }
 
     companion object {
         private const val TAG = "G1Connector"
-        private val NUS_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
         private const val SCAN_PASS_DURATION_MS = 7_000L
         private const val CONNECT_TIMEOUT_MS = 10_000L
+        private val NUS_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
     }
 
-    /** Public entry: try the smart ladder */
-    suspend fun connectSmart(): Boolean = withContext(Dispatchers.IO) {
-        Log.i(TAG, "connectSmart started")
-        // A) Attach to Hub/Service if already connected
+    suspend fun connectSmart(): Result = withContext(Dispatchers.IO) {
         if (attachToHub()) {
             Log.i(TAG, "CONNECT_PATH=HUB")
-            return@withContext true
+            return@withContext Result.Success
         }
 
-        // B) Bonded connect (no scan)
-        if (tryBondedConnectInternal()) {
-            Log.i(TAG, "CONNECT_PATH=BONDED")
-            return@withContext true
+        when (val bonded = tryBondedConnectInternal()) {
+            BondedResult.Success -> {
+                Log.i(TAG, "CONNECT_PATH=BONDED")
+                return@withContext Result.Success
+            }
+            BondedResult.PermissionMissing -> return@withContext Result.PermissionMissing
+            BondedResult.NoDevices -> Unit
         }
 
-        // C) Scan fallback
-        return@withContext scanAndConnect()
+        return@withContext when (val scan = scanAndConnect()) {
+            ScanOutcome.Success -> Result.Success
+            ScanOutcome.PermissionMissing -> Result.PermissionMissing
+            ScanOutcome.NotFound -> Result.NotFound
+        }
     }
 
-    // ===== A) Attach to Hub/Service ============================================================
+    suspend fun tryBondedConnect(): Result = withContext(Dispatchers.IO) {
+        when (val bonded = tryBondedConnectInternal()) {
+            BondedResult.Success -> {
+                Log.i(TAG, "CONNECT_PATH=BONDED")
+                Result.Success
+            }
+            BondedResult.PermissionMissing -> Result.PermissionMissing
+            BondedResult.NoDevices -> Result.NotFound
+        }
+    }
 
     private fun attachToHub(): Boolean {
         return try {
-            val client = G1ServiceClient.open(ctx) ?: return false
-            val connected = runCatching { client.listConnectedGlasses() }.getOrDefault(emptyList())
-            val ok = connected.isNotEmpty()
+            val client = G1ServiceClient.open(context) ?: return false
+            val connected = runCatching { client.listConnectedGlasses() }
+                .getOrDefault(emptyList())
+            val success = connected.isNotEmpty()
             Log.i(TAG, "attachToHub connected=${connected.size}")
             client.close()
-            ok
-        } catch (t: Throwable) {
-            Log.w(TAG, "attachToHub error", t)
+            success
+        } catch (error: Throwable) {
+            Log.w(TAG, "attachToHub error", error)
             false
         }
     }
 
-    // ===== B) Bonded connect (no scan) =========================================================
-
-    @SuppressLint("MissingPermission")
-    private fun tryBondedConnectInternal(): Boolean {
+    private suspend fun tryBondedConnectInternal(): BondedResult = withContext(Dispatchers.IO) {
         if (!ensurePermission(Manifest.permission.BLUETOOTH_CONNECT, "CONNECT")) {
-            return false
+            return@withContext BondedResult.PermissionMissing
         }
-        val mgr = ctx.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return false
-        val adapter = mgr.adapter ?: BluetoothAdapter.getDefaultAdapter() ?: return false
-        val bonded = adapter.bondedDevices.orEmpty().filter { d ->
-            val n = d.name ?: ""
-            n.contains("Even", true) || n.contains("G1", true)
+        val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter = manager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        val bonded = adapter?.bondedDevices.orEmpty().filter { device ->
+            val name = device.name.orEmpty()
+            name.contains("Even", ignoreCase = true) || name.contains("G1", ignoreCase = true)
         }
         if (bonded.isEmpty()) {
             Log.i(TAG, "No bonded Even/G1 devices")
+            return@withContext BondedResult.NoDevices
+        }
+
+        bonded.forEach { device ->
+            Log.i(TAG, "Attempt bonded connect to ${device.name} / ${device.address}")
+            if (connectGattOnce(device)) {
+                return@withContext BondedResult.Success
+            }
+        }
+        BondedResult.NoDevices
+    }
+
+    private fun scanAndConnect(): ScanOutcome {
+        if (ensureScanPermissions() == ScanPermission.Missing) {
+            return ScanOutcome.PermissionMissing
+        }
+
+        Log.i(TAG, "Starting broad scan pass")
+        when (val broad = runScan(emptyList())) {
+            ScanOutcome.Success -> return ScanOutcome.Success
+            ScanOutcome.PermissionMissing -> return broad
+            ScanOutcome.NotFound -> Unit
+        }
+
+        Log.i(TAG, "Broad scan complete, starting filtered pass")
+        val filter = ScanFilter.Builder()
+            .setServiceUuid(ParcelUuid(NUS_UUID))
+            .build()
+        return runScan(listOf(filter))
+    }
+
+    private fun runScan(filters: List<ScanFilter>): ScanOutcome {
+        if (ensureScanPermissions() == ScanPermission.Missing) {
+            return ScanOutcome.PermissionMissing
+        }
+        val scanner = BluetoothLeScannerCompat.getScanner()
+        val settings = ScanSettings.Builder()
+            .setLegacy(false)
+            .setReportDelay(0)
+            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .build()
+        val handler = Handler(Looper.getMainLooper())
+        val latch = CountDownLatch(1)
+        val processed = AtomicBoolean(false)
+        var result: ScanOutcome = ScanOutcome.NotFound
+
+        lateinit var stopRunnable: Runnable
+
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, scanResult: NordicScanResult) {
+                handleResult(scanResult)
+            }
+
+            override fun onBatchScanResults(results: MutableList<NordicScanResult>) {
+                results.forEach(::handleResult)
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                Log.w(TAG, "scan failed code=$errorCode")
+                if (processed.compareAndSet(false, true)) {
+                    result = ScanOutcome.NotFound
+                    latch.countDown()
+                }
+            }
+
+            private fun handleResult(resultItem: NordicScanResult) {
+                val device = resultItem.device ?: return
+                val name = device.name ?: resultItem.scanRecord?.deviceName ?: return
+                if (!name.contains("Even", ignoreCase = true) && !name.contains("G1", ignoreCase = true)) {
+                    return
+                }
+                if (!processed.compareAndSet(false, true)) {
+                    return
+                }
+                Log.i(TAG, "scan hit ${name} / ${device.address}")
+                runCatching { scanner.stopScan(this) }
+                handler.removeCallbacks(stopRunnable)
+                result = if (connectGattOnce(device)) {
+                    Log.i(TAG, "CONNECT_PATH=SCAN")
+                    ScanOutcome.Success
+                } else {
+                    ScanOutcome.NotFound
+                }
+                latch.countDown()
+            }
+        }
+
+        stopRunnable = Runnable {
+            if (processed.compareAndSet(false, true)) {
+                Log.i(TAG, "scan window elapsed")
+                runCatching { scanner.stopScan(callback) }
+                result = ScanOutcome.NotFound
+                latch.countDown()
+            }
+        }
+
+        return try {
+            scanner.startScan(filters, settings, callback)
+            handler.postDelayed(stopRunnable, SCAN_PASS_DURATION_MS)
+            latch.await(SCAN_PASS_DURATION_MS + CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            handler.removeCallbacks(stopRunnable)
+            runCatching { scanner.stopScan(callback) }
+            result
+        } catch (error: SecurityException) {
+            Log.w(TAG, "Unable to start BLE scan", error)
+            ScanOutcome.PermissionMissing
+        } catch (error: IllegalStateException) {
+            Log.w(TAG, "BLE scanner unavailable", error)
+            ScanOutcome.NotFound
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun connectGattOnce(device: BluetoothDevice): Boolean {
+        if (!ensurePermission(Manifest.permission.BLUETOOTH_CONNECT, "CONNECT")) {
             return false
         }
-
-        bonded.forEach { dev ->
-            Log.i(TAG, "Attempt bonded connect to ${dev.name} / ${dev.address}")
-            val ok = connectGattOnce(dev)
-            if (ok) {
-                return true
-            }
-        }
-        return false
-    }
-
-    @SuppressLint("MissingPermission")
-    fun tryBondedConnect(): Boolean {
-        return tryBondedConnectInternal().also { success ->
-            if (success) {
-                Log.i(TAG, "CONNECT_PATH=BONDED")
-            }
-        }
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun connectGattOnce(dev: BluetoothDevice): Boolean {
         var success = false
         val latch = CountDownLatch(1)
         val completed = AtomicBoolean(false)
@@ -149,132 +264,38 @@ class G1Connector(private val ctx: Context) {
                 if (status != BluetoothGatt.GATT_SUCCESS) {
                     Log.w(TAG, "GATT_STATUS=$status")
                 }
-                success = (status == BluetoothGatt.GATT_SUCCESS && nus != null)
+                success = status == BluetoothGatt.GATT_SUCCESS && nus != null
                 if (completed.compareAndSet(false, true)) {
                     latch.countDown()
                 }
             }
         }
 
-        try {
-            dev.connectGatt(ctx, /* autoConnect */ false, callback)
+        return try {
+            device.connectGatt(context, /* autoConnect = */ false, callback)
             val awaited = latch.await(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             if (!awaited) {
-                Log.w(TAG, "connectGattOnce timeout for ${dev.address}")
+                Log.w(TAG, "connectGattOnce timeout for ${device.address}")
             }
-        } catch (t: Throwable) {
-            Log.w(TAG, "connectGattOnce error", t)
-        }
-        return success
-    }
-
-    // ===== C) Scan fallback ====================================================================
-
-    private fun scanAndConnect(): Boolean {
-        if (!ensureScanPermissions()) {
-            return false
-        }
-        Log.i(TAG, "Starting scanAndConnect broad pass")
-        if (runScan(emptyList())) {
-            Log.i(TAG, "CONNECT_PATH=SCAN")
-            return true
-        }
-        Log.i(TAG, "Broad scan finished, starting filtered pass")
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(NUS_UUID))
-            .build()
-        val filteredSuccess = runScan(listOf(filter))
-        if (filteredSuccess) {
-            Log.i(TAG, "CONNECT_PATH=SCAN")
-        }
-        return filteredSuccess
-    }
-
-    private fun runScan(filters: List<ScanFilter>): Boolean {
-        val scanner = BluetoothLeScannerCompat.getScanner()
-        val settings = ScanSettings.Builder()
-            .setLegacy(false)
-            .setReportDelay(0)
-            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
-            .build()
-        val handler = Handler(Looper.getMainLooper())
-        val latch = CountDownLatch(1)
-        val processed = AtomicBoolean(false)
-        var success = false
-
-        lateinit var stopRunnable: Runnable
-
-        val callback = object : ScanCallback() {
-            override fun onScanResult(callbackType: Int, result: ScanResult) {
-                handleResult(result)
-            }
-
-            override fun onBatchScanResults(results: MutableList<ScanResult>) {
-                results.forEach(::handleResult)
-            }
-
-            override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "scan failed code=$errorCode")
-                if (processed.compareAndSet(false, true)) {
-                    latch.countDown()
-                }
-            }
-
-            private fun handleResult(result: ScanResult) {
-                val device = result.device
-                val name = device?.name ?: result.scanRecord?.deviceName ?: return
-                if (!name.contains("Even", true) && !name.contains("G1", true)) {
-                    return
-                }
-                if (!processed.compareAndSet(false, true)) {
-                    return
-                }
-                Log.i(TAG, "scan hit ${name} / ${device.address}")
-                runCatching { scanner.stopScan(this) }
-                handler.removeCallbacks(stopRunnable)
-                success = connectGattOnce(device)
-                latch.countDown()
-            }
-        }
-
-        stopRunnable = Runnable {
-            if (processed.compareAndSet(false, true)) {
-                Log.i(TAG, "scan window elapsed")
-                runCatching { scanner.stopScan(callback) }
-                latch.countDown()
-            }
-        }
-
-        return try {
-            scanner.startScan(filters, settings, callback)
-            handler.postDelayed(stopRunnable, SCAN_PASS_DURATION_MS)
-            val awaited = latch.await(SCAN_PASS_DURATION_MS + CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (!awaited) {
-                Log.w(TAG, "scan latch timeout")
-            }
-            handler.removeCallbacks(stopRunnable)
-            runCatching { scanner.stopScan(callback) }
             success
-        } catch (error: SecurityException) {
-            Log.w(TAG, "Unable to start BLE scan", error)
-            false
-        } catch (error: IllegalStateException) {
-            Log.w(TAG, "BLE scanner unavailable", error)
+        } catch (error: Throwable) {
+            Log.w(TAG, "connectGattOnce error", error)
             false
         }
     }
 
-    // ===== Permissions helper ==================================================================
-
-    private fun ensureScanPermissions(): Boolean {
-        var ok = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ok = ok && ensurePermission(Manifest.permission.BLUETOOTH_SCAN, "SCAN")
-            ok = ok && ensurePermission(Manifest.permission.BLUETOOTH_CONNECT, "CONNECT")
+    private fun ensureScanPermissions(): ScanPermission {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val scan = ensurePermission(Manifest.permission.BLUETOOTH_SCAN, "SCAN")
+            val connect = ensurePermission(Manifest.permission.BLUETOOTH_CONNECT, "CONNECT")
+            if (scan && connect) ScanPermission.Granted else ScanPermission.Missing
         } else {
-            ok = ok && ensurePermission(Manifest.permission.ACCESS_FINE_LOCATION, "SCAN")
+            if (ensurePermission(Manifest.permission.ACCESS_FINE_LOCATION, "SCAN")) {
+                ScanPermission.Granted
+            } else {
+                ScanPermission.Missing
+            }
         }
-        return ok
     }
 
     private fun ensurePermission(permission: String, marker: String): Boolean {
@@ -283,10 +304,24 @@ class G1Connector(private val ctx: Context) {
         ) {
             return true
         }
-        val granted = ContextCompat.checkSelfPermission(ctx, permission) == PackageManager.PERMISSION_GRANTED
+        val granted = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         if (!granted) {
             Log.w(TAG, "PERM_MISSING=$marker")
         }
         return granted
+    }
+
+    private enum class ScanPermission { Granted, Missing }
+
+    private sealed class BondedResult {
+        data object Success : BondedResult()
+        data object NoDevices : BondedResult()
+        data object PermissionMissing : BondedResult()
+    }
+
+    private sealed class ScanOutcome {
+        data object Success : ScanOutcome()
+        data object NotFound : ScanOutcome()
+        data object PermissionMissing : ScanOutcome()
     }
 }

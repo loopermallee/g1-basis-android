@@ -25,7 +25,7 @@ import io.texne.g1.hub.ui.theme.G1HubTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity: ComponentActivity() {
+class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
@@ -75,12 +75,12 @@ class MainActivity: ComponentActivity() {
     }
 
     private fun requestBluetoothPermissions() {
-        val permissions = requiredPermissions()
-        if (permissions.isEmpty()) {
+        val required = requiredPermissions()
+        if (required.isEmpty()) {
             return
         }
-        val missing = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        val missing = required.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isNotEmpty()) {
             bluetoothPermissionLauncher.launch(missing.toTypedArray())
@@ -88,12 +88,13 @@ class MainActivity: ComponentActivity() {
     }
 
     private fun requiredPermissions(): Array<String> {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            return arrayOf(
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
                 Manifest.permission.BLUETOOTH_CONNECT,
                 Manifest.permission.BLUETOOTH_SCAN
             )
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }
-        return arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 }
