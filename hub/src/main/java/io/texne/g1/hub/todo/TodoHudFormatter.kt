@@ -1,12 +1,13 @@
 package io.texne.g1.hub.todo
 
+import io.texne.g1.basis.client.MAX_CHARACTERS_PER_LINE
 import kotlin.math.min
 
 object TodoHudFormatter {
     const val HUD_CHECKED_ICON = "[✔]"
     const val HUD_UNCHECKED_ICON = "[ ]"
     const val MAX_ITEMS_PER_PAGE = 4
-    const val MAX_CHAR_PER_LINE = 50
+    private const val MAX_CHAR_PER_LINE = MAX_CHARACTERS_PER_LINE
     private const val TITLE = "TODO"
     private const val EMPTY_MESSAGE = "All caught up!"
     private const val ELLIPSIS = "..."
