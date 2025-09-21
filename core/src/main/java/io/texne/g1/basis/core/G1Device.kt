@@ -130,7 +130,10 @@ internal class G1Device(
             )
             successfullySent = manager.send(nextRequest.outgoing)
             if(!successfullySent) {
-                // TODO: log send error
+                Log.e(
+                    "G1Device",
+                    "Failed to send request ${nextRequest.outgoing.type}; invoking failure callback"
+                )
                 nextRequest.callback(null)
                 nextRequest = queuedRequests.removeFirstOrNull()
             }
@@ -189,12 +192,19 @@ internal class G1Device(
 
     private fun sendBatteryCheck() {
         if(!manager.send(BatteryLevelRequestPacket())) {
-            // TODO: log error
+            Log.e(
+                "G1Device",
+                "Heartbeat battery check failed to send"
+            )
         }
 
         // if current request has expired, return failure and advance queue
         val request = currentRequest
         if(request != null && request.expires < Date().time) {
+            Log.w(
+                "G1Device",
+                "Request ${request.outgoing.type} expired before response; advancing queue"
+            )
             request.callback(null)
             advanceQueue()
         }
