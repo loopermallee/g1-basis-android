@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.basis.client.G1ServiceCommon.ServiceStatus
+import io.texne.g1.hub.ble.G1Connector
 import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.model.Repository.GlassesSnapshot
 import io.texne.g1.hub.preferences.AssistantPreferences
+import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
@@ -20,13 +23,25 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import javax.inject.Inject
+import kotlinx.coroutines.withContext
+import android.util.Log
 
 @HiltViewModel
 class ApplicationViewModel @Inject constructor(
     private val repository: Repository,
-    private val assistantPreferences: AssistantPreferences
-): ViewModel() {
+    private val assistantPreferences: AssistantPreferences,
+    private val connector: G1Connector
+) : ViewModel() {
+
+    companion object {
+        private const val TAG = "ApplicationVM"
+        private const val STATUS_LOOKING = "Looking for glasses…"
+        private const val STATUS_CONNECTED = "Connected"
+        private const val STATUS_TRY_BONDED = "Trying bonded connect…"
+        private const val PERMISSION_MESSAGE = "Bluetooth permission is required. Please allow 'Nearby devices'."
+        private const val FAILURE_MESSAGE = "Couldn’t find/connect to glasses.\nTips: Unfold glasses, close the Even app (MentraOS), toggle Bluetooth, and retry."
+        private const val RETRY_DELAY_SECONDS = 10
+    }
 
     data class RetryCountdown(
         val secondsRemaining: Int,
@@ -41,7 +56,9 @@ class ApplicationViewModel @Inject constructor(
         val nearbyGlasses: List<GlassesSnapshot>? = null,
         val selectedSection: AppSection = AppSection.GLASSES,
         val retryCountdowns: Map<String, RetryCountdown> = emptyMap(),
-        val telemetryEntries: List<TelemetryEntry> = emptyList()
+        val telemetryEntries: List<TelemetryEntry> = emptyList(),
+        val statusMessage: String? = null,
+        val errorMessage: String? = null
     )
 
     data class TelemetryEntry(
@@ -56,6 +73,7 @@ class ApplicationViewModel @Inject constructor(
     sealed class UiMessage {
         data class AutoConnectTriggered(val glassesName: String) : UiMessage()
         data class AutoConnectFailed(val glassesName: String) : UiMessage()
+        data class Snackbar(val text: String) : UiMessage()
     }
 
     private enum class AttemptType { MANUAL, AUTO }
@@ -73,6 +91,8 @@ class ApplicationViewModel @Inject constructor(
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
     private val retryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    private val statusMessage = MutableStateFlow<String?>(null)
+    private val errorMessage = MutableStateFlow<String?>(null)
 
     private val messages = MutableSharedFlow<UiMessage>(
         replay = 0,
@@ -93,12 +113,18 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
+    private val statusAndError = combine(statusMessage, errorMessage) { statusText, errorText ->
+        statusText to errorText
+    }
+
     val state = combine(
         repository.getServiceStateFlow(),
         selectedSection,
         retryCountdowns,
-        retryCounts
-    ) { serviceState, section, retries, retryStats ->
+        retryCounts,
+        statusAndError
+    ) { serviceState, section, retries, retryStats, statusAndErrorPair ->
+        val (statusText, errorText) = statusAndErrorPair
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
@@ -116,15 +142,39 @@ class ApplicationViewModel @Inject constructor(
                     rssi = glasses.rssi,
                     retryCount = retryStats[glasses.id] ?: 0
                 )
-            } ?: emptyList()
+            } ?: emptyList(),
+            statusMessage = statusText,
+            errorMessage = errorText
         )
     }.stateIn(viewModelScope, SharingStarted.Lazily, State())
 
     fun scan() {
-        repository.startLooking()
+        viewModelScope.launch {
+            showStatus(STATUS_LOOKING)
+            repository.startLooking()
+            val result = try {
+                withContext(Dispatchers.IO) { connector.connectSmart() }
+            } catch (error: Throwable) {
+                Log.w(TAG, "connectSmart error", error)
+                G1Connector.Result.NotFound
+            }
+            when (result) {
+                is G1Connector.Result.Success -> {
+                    showStatus(STATUS_CONNECTED)
+                    notify(UiMessage.Snackbar("Connected to glasses"))
+                }
+                is G1Connector.Result.PermissionMissing -> {
+                    showPermissionError()
+                }
+                is G1Connector.Result.NotFound -> {
+                    showConnectionFailure()
+                }
+            }
+        }
     }
 
     fun connect(id: String) {
+        clearStatus()
         val attempt = connectionAttempts.getOrPut(id) { AttemptState() }
         attempt.hasAttemptStarted = false
         attempt.lastAttemptType = AttemptType.MANUAL
@@ -138,6 +188,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     fun disconnect(id: String) {
+        clearStatus()
         clearRetryCountdown(id, removeRequest = true)
         repository.disconnectGlasses(id)
     }
@@ -147,8 +198,34 @@ class ApplicationViewModel @Inject constructor(
     }
 
     fun retryNow(id: String) {
+        clearStatus()
         clearRetryCountdown(id, removeRequest = false)
         connect(id)
+    }
+
+    fun tryBondedConnect() {
+        viewModelScope.launch {
+            showStatus(STATUS_TRY_BONDED)
+            val result = try {
+                withContext(Dispatchers.IO) { connector.tryBondedConnect() }
+            } catch (error: Throwable) {
+                Log.w(TAG, "tryBondedConnect error", error)
+                G1Connector.Result.NotFound
+            }
+            when (result) {
+                is G1Connector.Result.Success -> {
+                    showStatus(STATUS_CONNECTED)
+                    notify(UiMessage.Snackbar("Bonded connect succeeded"))
+                }
+                is G1Connector.Result.PermissionMissing -> {
+                    showPermissionError()
+                }
+                is G1Connector.Result.NotFound -> {
+                    showConnectionFailure()
+                    repository.startLooking()
+                }
+            }
+        }
     }
 
     fun selectSection(section: AppSection) {
@@ -162,6 +239,29 @@ class ApplicationViewModel @Inject constructor(
         viewModelScope.launch {
             messages.emit(message)
         }
+    }
+
+    private fun showStatus(text: String) {
+        statusMessage.value = text
+        errorMessage.value = null
+    }
+
+    private fun showConnectionFailure() {
+        statusMessage.value = null
+        errorMessage.value = FAILURE_MESSAGE
+        Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
+        notify(UiMessage.Snackbar(FAILURE_MESSAGE))
+    }
+
+    private fun showPermissionError() {
+        statusMessage.value = null
+        errorMessage.value = PERMISSION_MESSAGE
+        notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
+    }
+
+    private fun clearStatus() {
+        statusMessage.value = null
+        errorMessage.value = null
     }
 
     private fun updateRetryCount(id: String, count: Int) {
@@ -260,9 +360,9 @@ class ApplicationViewModel @Inject constructor(
         viewModelScope.launch {
             repository.gestureEvents().collect { gesture ->
                 val preferred = activationPreference.value
-                if(gesture.type == preferred && gesture.side == G1ServiceCommon.GestureSide.RIGHT) {
+                if (gesture.type == preferred && gesture.side == G1ServiceCommon.GestureSide.RIGHT) {
                     activationEvents.emit(gesture)
-                    if(selectedSection.value != AppSection.ASSISTANT) {
+                    if (selectedSection.value != AppSection.ASSISTANT) {
                         selectedSection.value = AppSection.ASSISTANT
                     }
                 }
@@ -330,9 +430,5 @@ class ApplicationViewModel @Inject constructor(
         if (removeRequest) {
             connectionAttempts.remove(id)
         }
-    }
-
-    companion object {
-        private const val RETRY_DELAY_SECONDS = 10
     }
 }
