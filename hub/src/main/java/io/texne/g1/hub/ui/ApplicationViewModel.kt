@@ -113,14 +113,18 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
+    private val statusAndError = combine(statusMessage, errorMessage) { statusText, errorText ->
+        statusText to errorText
+    }
+
     val state = combine(
         repository.getServiceStateFlow(),
         selectedSection,
         retryCountdowns,
         retryCounts,
-        statusMessage,
-        errorMessage
-    ) { serviceState, section, retries, retryStats, statusText, errorText ->
+        statusAndError
+    ) { serviceState, section, retries, retryStats, statusAndErrorPair ->
+        val (statusText, errorText) = statusAndErrorPair
         State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
