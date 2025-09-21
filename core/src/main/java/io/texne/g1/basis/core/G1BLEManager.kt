@@ -105,6 +105,13 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
             }
         }
         enableNotifications(notificationCharacteristic)
+            .fail { _, status ->
+                Log.e(
+                    "G1BLEManager",
+                    "Failed to enable notifications for $deviceName (status: $status)"
+                )
+            }
+            .enqueue()
     }
 
     //
