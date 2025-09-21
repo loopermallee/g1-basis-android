@@ -83,7 +83,7 @@ class MainActivity: ComponentActivity() {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isNotEmpty()) {
-            bluetoothPermissionLauncher.launch(permissions)
+            bluetoothPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 
