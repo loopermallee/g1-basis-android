@@ -34,6 +34,7 @@ import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanFilter
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
+import no.nordicsemi.android.support.v18.scanner.ScanRecord as NordicScanRecord
 import java.util.Locale
 import java.util.UUID
 import kotlin.collections.ArrayDeque
@@ -301,13 +302,15 @@ class G1 {
             val right: DeviceCandidate
         )
 
-        private fun ScanRecord?.hasNusService(): Boolean {
-            val uuids = this?.serviceUuids ?: return false
-            return uuids.any { parcelUuid -> parcelUuid?.uuid == NUS_UUID }
+        private fun List<ParcelUuid>?.containsNusServiceUuid(): Boolean {
+            if (this == null) {
+                return false
+            }
+            return any { parcelUuid -> parcelUuid?.uuid == NUS_UUID }
         }
 
-        private fun ScanRecord?.findManufacturerMatch(): ManufacturerDataMatch? {
-            val sparseArray = this?.manufacturerSpecificData ?: return null
+        private fun SparseArray<ByteArray>?.firstManufacturerMatch(): ManufacturerDataMatch? {
+            val sparseArray = this ?: return null
             for (index in 0 until sparseArray.size()) {
                 val companyId = sparseArray.keyAt(index)
                 val payload = sparseArray.valueAt(index) ?: continue
@@ -323,6 +326,18 @@ class G1 {
             }
             return null
         }
+
+        private fun ScanRecord?.hasNusService(): Boolean =
+            this?.serviceUuids.containsNusServiceUuid()
+
+        private fun NordicScanRecord?.hasNusService(): Boolean =
+            this?.serviceUuids.containsNusServiceUuid()
+
+        private fun ScanRecord?.findManufacturerMatch(): ManufacturerDataMatch? =
+            this?.manufacturerSpecificData.firstManufacturerMatch()
+
+        private fun NordicScanRecord?.findManufacturerMatch(): ManufacturerDataMatch? =
+            this?.manufacturerSpecificData.firstManufacturerMatch()
 
         private fun ManufacturerDataMatch.identifier(address: String): String? {
             val base = addressPairIdentifier(address) ?: return null
@@ -484,7 +499,7 @@ class G1 {
 
         private fun candidateFromScanResult(result: ScanResult): DeviceCandidate? {
             val device = result.device
-            val record: ScanRecord? = result.scanRecord
+            val record = result.scanRecord
             val advertisedName = record?.deviceName ?: device.name
             val hasRecognizedName = advertisedName?.let { isRecognizedDeviceName(it) } == true
             val manufacturerMatch = record.findManufacturerMatch()

@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import android.util.SparseArray
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
@@ -35,6 +36,7 @@ import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanFilter
 import no.nordicsemi.android.support.v18.scanner.ScanResult as NordicScanResult
+import no.nordicsemi.android.support.v18.scanner.ScanRecord as NordicScanRecord
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
 
 /**
@@ -247,13 +249,15 @@ class G1Connector @Inject constructor(
         return MANUFACTURER_KEYWORDS.any { normalized.contains(it) }
     }
 
-    private fun ScanRecord?.hasNusService(): Boolean {
-        val uuids = this?.serviceUuids ?: return false
-        return uuids.any { parcelUuid -> parcelUuid?.uuid == NUS_UUID }
+    private fun List<ParcelUuid>?.containsNusServiceUuid(): Boolean {
+        if (this == null) {
+            return false
+        }
+        return any { parcelUuid -> parcelUuid?.uuid == NUS_UUID }
     }
 
-    private fun ScanRecord?.hasEvenManufacturerData(): Boolean {
-        val data = this?.manufacturerSpecificData ?: return false
+    private fun SparseArray<ByteArray>?.hasEvenManufacturerPayload(): Boolean {
+        val data = this ?: return false
         for (index in 0 until data.size()) {
             val companyId = data.keyAt(index)
             val payload = data.valueAt(index) ?: continue
@@ -269,6 +273,18 @@ class G1Connector @Inject constructor(
         }
         return false
     }
+
+    private fun ScanRecord?.hasNusService(): Boolean =
+        this?.serviceUuids.containsNusServiceUuid()
+
+    private fun NordicScanRecord?.hasNusService(): Boolean =
+        this?.serviceUuids.containsNusServiceUuid()
+
+    private fun ScanRecord?.hasEvenManufacturerData(): Boolean =
+        this?.manufacturerSpecificData.hasEvenManufacturerPayload()
+
+    private fun NordicScanRecord?.hasEvenManufacturerData(): Boolean =
+        this?.manufacturerSpecificData.hasEvenManufacturerPayload()
 
     private fun ByteArray.containsKeyword(keyword: String): Boolean {
         if (keyword.isEmpty()) {
