@@ -73,6 +73,8 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
                                 G1ServiceState.READY -> ServiceStatus.READY
                                 G1ServiceState.LOOKING -> ServiceStatus.LOOKING
                                 G1ServiceState.LOOKED -> ServiceStatus.LOOKED
+                                G1ServiceState.PERMISSION_REQUIRED -> ServiceStatus.PERMISSION_REQUIRED
+                                G1ServiceState.ERROR -> ServiceStatus.ERROR
                                 else -> ServiceStatus.ERROR
                             },
                             glasses = newState.glasses.map { glass ->

@@ -130,7 +130,11 @@ class ApplicationViewModel @Inject constructor(
             error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
             serviceStatus = serviceState?.status ?: ServiceStatus.READY,
-            nearbyGlasses = if (serviceState == null || serviceState.status == ServiceStatus.READY) null else serviceState.glasses,
+            nearbyGlasses = if (
+                serviceState == null ||
+                serviceState.status == ServiceStatus.READY ||
+                serviceState.status == ServiceStatus.PERMISSION_REQUIRED
+            ) null else serviceState.glasses,
             selectedSection = section,
             retryCountdowns = retries,
             telemetryEntries = serviceState?.glasses?.map { glasses ->
@@ -191,6 +195,10 @@ class ApplicationViewModel @Inject constructor(
         clearStatus()
         clearRetryCountdown(id, removeRequest = true)
         repository.disconnectGlasses(id)
+    }
+
+    fun onPermissionDenied() {
+        showPermissionError()
     }
 
     fun cancelAutoRetry(id: String) {

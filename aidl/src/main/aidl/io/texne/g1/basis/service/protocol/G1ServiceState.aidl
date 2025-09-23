@@ -8,6 +8,7 @@ parcelable G1ServiceState {
     const int READY = 1;
     const int LOOKING = 2;
     const int LOOKED = 3;
+    const int PERMISSION_REQUIRED = 4;
     const int ERROR = 666;
 
     int status;

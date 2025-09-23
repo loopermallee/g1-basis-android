@@ -10,6 +10,8 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- Legacy location access for pre-Android 12 scanning -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
@@ -34,6 +36,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".permissions.PermissionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.G1Hub" />
     </application>
 
 </manifest>

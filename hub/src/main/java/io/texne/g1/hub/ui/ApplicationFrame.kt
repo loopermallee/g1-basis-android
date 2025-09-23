@@ -2,6 +2,9 @@ package io.texne.g1.hub.ui
 
 import GlassesScreen
 import ScannerScreen
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,16 +22,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.texne.g1.basis.client.G1ServiceCommon
+import io.texne.g1.hub.permissions.PermissionHelper
 import io.texne.g1.hub.ui.chat.ChatScreen
 import io.texne.g1.hub.ui.settings.SettingsScreen
 import io.texne.g1.hub.ui.telemetry.TelemetryScreen
@@ -38,6 +47,44 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
     val viewModel = hiltViewModel<ApplicationViewModel>()
     val state by viewModel.state.collectAsState()
     val selectedSection = state.selectedSection
+    val context = LocalContext.current
+    var pendingPermissionAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var autoPromptShown by remember { mutableStateOf(false) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val action = pendingPermissionAction
+        pendingPermissionAction = null
+        if (result.resultCode == Activity.RESULT_OK) {
+            action?.invoke()
+        } else {
+            viewModel.onPermissionDenied()
+        }
+    }
+
+    val runWithPermissions: ((() -> Unit) -> Unit) = remember(context, viewModel, permissionLauncher) {
+        { action ->
+            val intent = PermissionHelper.createPermissionIntent(context)
+            if (intent == null) {
+                action()
+            } else if (pendingPermissionAction == null) {
+                pendingPermissionAction = action
+                permissionLauncher.launch(intent)
+            }
+        }
+    }
+
+    val scanAction = remember(viewModel, runWithPermissions) {
+        {
+            runWithPermissions { viewModel.scan() }
+        }
+    }
+
+    val bondedConnectAction = remember(viewModel, runWithPermissions) {
+        {
+            runWithPermissions { viewModel.tryBondedConnect() }
+        }
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.uiMessages.collect { message ->
@@ -49,6 +96,17 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
                 is ApplicationViewModel.UiMessage.Snackbar -> message.text
             }
             snackbarHostState.showSnackbar(text)
+        }
+    }
+
+    LaunchedEffect(state.serviceStatus) {
+        if (state.serviceStatus == G1ServiceCommon.ServiceStatus.PERMISSION_REQUIRED) {
+            if (!autoPromptShown) {
+                autoPromptShown = true
+                runWithPermissions { }
+            }
+        } else {
+            autoPromptShown = false
         }
     }
 
@@ -78,12 +136,12 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
                         retryCountdowns = state.retryCountdowns,
                         statusMessage = state.statusMessage,
                         errorMessage = state.errorMessage,
-                        scan = { viewModel.scan() },
+                        scan = scanAction,
                         connect = { viewModel.connect(it) },
                         disconnect = { viewModel.disconnect(it) },
                         cancelRetry = { viewModel.cancelAutoRetry(it) },
                         retryNow = { viewModel.retryNow(it) },
-                        onBondedConnect = { viewModel.tryBondedConnect() }
+                        onBondedConnect = bondedConnectAction
                     )
                 }
             }
