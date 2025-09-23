@@ -484,13 +484,13 @@ class G1 {
 
         private fun candidateFromScanResult(result: ScanResult): DeviceCandidate? {
             val device = result.device
-            val record = result.scanRecord
+            val record: ScanRecord? = result.scanRecord
             val advertisedName = record?.deviceName ?: device.name
             val hasRecognizedName = advertisedName?.let { isRecognizedDeviceName(it) } == true
-            val hasNusService = record.hasNusService()
             val manufacturerMatch = record.findManufacturerMatch()
+            val hasDiscoveryHint = record.hasNusService() || manufacturerMatch != null
 
-            if (!hasRecognizedName && !hasNusService && manufacturerMatch == null) {
+            if (!hasRecognizedName && !hasDiscoveryHint) {
                 return null
             }
 
