@@ -2,7 +2,6 @@ package io.texne.g1.hub.ble
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -109,7 +108,7 @@ class G1Connector @Inject constructor(
             return@withContext BondedResult.PermissionMissing
         }
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        val adapter = manager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        val adapter = manager?.adapter
         val bonded = adapter?.bondedDevices.orEmpty().filter { device ->
             val name = device.name.orEmpty()
             name.contains("Even", ignoreCase = true) || name.contains("G1", ignoreCase = true)

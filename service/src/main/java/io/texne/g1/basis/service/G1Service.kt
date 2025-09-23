@@ -302,7 +302,7 @@ class G1Service: Service() {
                     }
 
                     try {
-                        G1.find(15.toDuration(DurationUnit.SECONDS), filterSnapshot).collect { found ->
+                        G1.find(this@G1Service, 15.toDuration(DurationUnit.SECONDS), filterSnapshot).collect { found ->
                             if(found != null) {
                                 Log.d("G1Service", "SCANNING FOUND = ${found}")
 

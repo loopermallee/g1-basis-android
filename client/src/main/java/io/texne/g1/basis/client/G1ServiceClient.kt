@@ -1,7 +1,6 @@
 package io.texne.g1.basis.client
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.ComponentName
@@ -115,7 +114,7 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
         }
 
         val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
-        val adapter = bluetoothManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        val adapter = bluetoothManager?.adapter
         val bondedDevices = try {
             adapter?.bondedDevices ?: emptySet()
         } catch (_: SecurityException) {

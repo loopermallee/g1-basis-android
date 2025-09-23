@@ -1,8 +1,8 @@
 package io.texne.g1.basis.core
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -471,6 +471,7 @@ class G1 {
         }
 
         fun find(
+            context: Context,
             duration: Duration,
             sideFilter: Set<G1Gesture.Side>? = null
         ) = callbackFlow<G1?> {
@@ -484,8 +485,9 @@ class G1 {
             val foundAddresses = mutableListOf<String>()
             val foundPairs = mutableMapOf<String, FoundPair>()
 
+            val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
             val bondedDevices = try {
-                BluetoothAdapter.getDefaultAdapter()?.bondedDevices ?: emptySet()
+                bluetoothManager?.adapter?.bondedDevices ?: emptySet()
             } catch (error: SecurityException) {
                 Log.w("G1", "Unable to access bonded devices", error)
                 emptySet()

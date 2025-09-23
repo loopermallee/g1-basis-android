@@ -3,7 +3,6 @@ package io.texne.g1.hub.ui.debug
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Application
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -339,7 +338,7 @@ class DebugViewModel @Inject constructor(
     @SuppressLint("MissingPermission")
     private fun loadBluetoothInfo(): DebugSnapshot.BluetoothInfo {
         val manager = ContextCompat.getSystemService(application, BluetoothManager::class.java)
-        val adapter = manager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
+        val adapter = manager?.adapter
         if (adapter == null) {
             return DebugSnapshot.BluetoothInfo(
                 enabled = null,
