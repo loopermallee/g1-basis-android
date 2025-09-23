@@ -20,6 +20,7 @@ import android.os.ParcelUuid
 import android.util.Log
 import android.util.SparseArray
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
 import java.util.Locale
@@ -50,6 +51,10 @@ class G1Connector @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    private val preferences by lazy {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
     sealed class Result {
         data object Success : Result()
         data object PermissionMissing : Result()
@@ -65,6 +70,10 @@ class G1Connector @Inject constructor(
         private val NUS_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
         private val MANUFACTURER_KEYWORDS = listOf("even", "g1")
         private val KNOWN_MANUFACTURER_IDS = emptySet<Int>()
+        private const val PREFS_NAME = "g1_connector"
+        private const val KEY_LAST_SUCCESSFUL_MAC = "last_successful_mac"
+        private const val KEY_KNOWN_NUS_ADDRESSES = "known_nus_addresses"
+        private const val KEY_KNOWN_MANUFACTURER_ADDRESSES = "known_manufacturer_addresses"
     }
 
     suspend fun connectSmart(): Result = withContext(Dispatchers.IO) {
@@ -120,17 +129,55 @@ class G1Connector @Inject constructor(
             return@withContext BondedResult.PermissionMissing
         }
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        val adapter = manager?.adapter
-        val bonded = adapter?.bondedDevices.orEmpty().filter { device ->
-            val name = device.name.orEmpty()
-            name.contains("Even", ignoreCase = true) || name.contains("G1", ignoreCase = true)
+        val adapter = manager?.adapter ?: run {
+            Log.w(TAG, "Bluetooth adapter unavailable")
+            return@withContext BondedResult.NoDevices
         }
-        if (bonded.isEmpty()) {
+
+        val attemptedAddresses = mutableSetOf<String>()
+        val seenAddresses = mutableSetOf<String>()
+        readLastSuccessfulMac()?.let { lastAddress ->
+            val lastDevice = runCatching { adapter.getRemoteDevice(lastAddress) }.getOrNull()
+            if (lastDevice != null) {
+                seenAddresses.add(lastDevice.address)
+                attemptedAddresses.add(lastDevice.address)
+                Log.i(TAG, "Attempt last successful connect to ${lastDevice.address}")
+                if (connectGattOnce(lastDevice)) {
+                    return@withContext BondedResult.Success
+                }
+            }
+        }
+
+        val knownNusAddresses = readKnownAddressSet(KEY_KNOWN_NUS_ADDRESSES)
+        val knownManufacturerAddresses = readKnownAddressSet(KEY_KNOWN_MANUFACTURER_ADDRESSES)
+
+        val bonded = try {
+            adapter.bondedDevices.orEmpty()
+        } catch (error: SecurityException) {
+            Log.w(TAG, "Unable to access bonded devices", error)
+            emptySet()
+        }
+
+        val candidates = bonded.filter { device ->
+            if (!seenAddresses.add(device.address)) {
+                return@filter false
+            }
+            val name = device.name.orEmpty()
+            val normalizedAddress = normalizedAddress(device.address)
+            val recognizedByMetadata = normalizedAddress != null && (
+                knownNusAddresses.contains(normalizedAddress) ||
+                    knownManufacturerAddresses.contains(normalizedAddress)
+                )
+            matchesEvenName(name) || recognizedByMetadata
+        }
+
+        if (candidates.isEmpty() && attemptedAddresses.isEmpty()) {
             Log.i(TAG, "No bonded Even/G1 devices")
             return@withContext BondedResult.NoDevices
         }
 
-        bonded.forEach { device ->
+        candidates.forEach { device ->
+            attemptedAddresses.add(device.address)
             Log.i(TAG, "Attempt bonded connect to ${device.name} / ${device.address}")
             if (connectGattOnce(device)) {
                 return@withContext BondedResult.Success
@@ -202,6 +249,7 @@ class G1Connector @Inject constructor(
                 if (!hasNameMatch && !hasNus && !hasManufacturer) {
                     return
                 }
+                rememberEncounteredDevice(device, hasNus, hasManufacturer)
                 if (!processed.compareAndSet(false, true)) {
                     return
                 }
@@ -345,7 +393,7 @@ class G1Connector @Inject constructor(
             }
         }
 
-        return try {
+        val connected = try {
             device.connectGatt(context, /* autoConnect = */ false, callback)
             val awaited = latch.await(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             if (!awaited) {
@@ -356,6 +404,10 @@ class G1Connector @Inject constructor(
             Log.w(TAG, "connectGattOnce error", error)
             false
         }
+        if (connected) {
+            rememberSuccessfulConnection(device)
+        }
+        return connected
     }
 
     @SuppressLint("MissingPermission", "UnspecifiedRegisterReceiverFlag")
@@ -511,5 +563,50 @@ class G1Connector @Inject constructor(
         data object Success : ScanOutcome()
         data object NotFound : ScanOutcome()
         data object PermissionMissing : ScanOutcome()
+    }
+
+    private fun rememberEncounteredDevice(
+        device: BluetoothDevice,
+        hasNus: Boolean,
+        hasManufacturer: Boolean
+    ) {
+        val address = normalizedAddress(device.address) ?: return
+        if (hasNus) {
+            updateKnownAddressSet(KEY_KNOWN_NUS_ADDRESSES, address)
+        }
+        if (hasManufacturer) {
+            updateKnownAddressSet(KEY_KNOWN_MANUFACTURER_ADDRESSES, address)
+        }
+    }
+
+    private fun rememberSuccessfulConnection(device: BluetoothDevice) {
+        val address = normalizedAddress(device.address) ?: return
+        preferences.edit {
+            putString(KEY_LAST_SUCCESSFUL_MAC, address)
+        }
+        updateKnownAddressSet(KEY_KNOWN_NUS_ADDRESSES, address)
+    }
+
+    private fun readLastSuccessfulMac(): String? =
+        preferences.getString(KEY_LAST_SUCCESSFUL_MAC, null)
+
+    private fun readKnownAddressSet(key: String): Set<String> =
+        preferences.getStringSet(key, emptySet())?.toSet().orEmpty()
+
+    private fun updateKnownAddressSet(key: String, address: String) {
+        val existing = preferences.getStringSet(key, emptySet()) ?: emptySet()
+        if (existing.contains(address)) {
+            return
+        }
+        preferences.edit {
+            putStringSet(key, existing.toMutableSet().apply { add(address) })
+        }
+    }
+
+    private fun normalizedAddress(raw: String?): String? {
+        if (raw.isNullOrBlank()) {
+            return null
+        }
+        return raw.uppercase(Locale.US)
     }
 }
