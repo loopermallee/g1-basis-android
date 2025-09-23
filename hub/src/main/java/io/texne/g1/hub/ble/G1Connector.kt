@@ -7,7 +7,10 @@ import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -52,6 +55,7 @@ class G1Connector @Inject constructor(
         private const val TAG = "G1Connector"
         private const val SCAN_PASS_DURATION_MS = 7_000L
         private const val CONNECT_TIMEOUT_MS = 10_000L
+        private const val BOND_TIMEOUT_MS = 20_000L
         private val NUS_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
     }
 
@@ -232,6 +236,10 @@ class G1Connector @Inject constructor(
         if (!ensurePermission(Manifest.permission.BLUETOOTH_CONNECT, "CONNECT")) {
             return false
         }
+        if (!ensureBond(device)) {
+            Log.w(TAG, "Unable to bond with ${device.address}")
+            return false
+        }
         var success = false
         val latch = CountDownLatch(1)
         val completed = AtomicBoolean(false)
@@ -279,6 +287,120 @@ class G1Connector @Inject constructor(
             success
         } catch (error: Throwable) {
             Log.w(TAG, "connectGattOnce error", error)
+            false
+        }
+    }
+
+    @SuppressLint("MissingPermission", "UnspecifiedRegisterReceiverFlag")
+    private fun ensureBond(device: BluetoothDevice): Boolean {
+        if (device.bondState == BluetoothDevice.BOND_BONDED) {
+            return true
+        }
+
+        val latch = CountDownLatch(1)
+        val completed = AtomicBoolean(false)
+        val bonded = AtomicBoolean(false)
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                intent ?: return
+                val target = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
+                } ?: return
+                if (target.address != device.address) {
+                    return
+                }
+
+                val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
+                val previous = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR)
+                Log.i(TAG, "Bond state change for ${device.address}: state=$state previous=$previous")
+                when (state) {
+                    BluetoothDevice.BOND_BONDED -> {
+                        bonded.set(true)
+                        if (completed.compareAndSet(false, true)) {
+                            latch.countDown()
+                        }
+                    }
+                    BluetoothDevice.BOND_NONE -> {
+                        if (completed.compareAndSet(false, true)) {
+                            latch.countDown()
+                        }
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            context.registerReceiver(receiver, filter)
+        }
+
+        return try {
+            val initialState = device.bondState
+            if (initialState == BluetoothDevice.BOND_BONDED) {
+                bonded.set(true)
+                return true
+            }
+
+            val shouldInitiateBond = initialState != BluetoothDevice.BOND_BONDING
+            if (shouldInitiateBond && !startBond(device)) {
+                return false
+            }
+
+            if (device.bondState == BluetoothDevice.BOND_BONDED) {
+                bonded.set(true)
+                return true
+            }
+
+            val awaited = latch.await(BOND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            if (!awaited) {
+                Log.w(TAG, "Bond timeout for ${device.address}")
+            }
+            bonded.get() || device.bondState == BluetoothDevice.BOND_BONDED
+        } finally {
+            runCatching { context.unregisterReceiver(receiver) }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startBond(device: BluetoothDevice): Boolean {
+        val insecureStarted = try {
+            val method = device.javaClass.getMethod("createBondInsecure")
+            val result = method.invoke(device)
+            val started = (result as? Boolean) == true
+            if (started) {
+                Log.i(TAG, "createBondInsecure() initiated for ${device.address}")
+            } else {
+                Log.i(TAG, "createBondInsecure() returned false for ${device.address}")
+            }
+            started
+        } catch (error: NoSuchMethodException) {
+            Log.i(TAG, "createBondInsecure unavailable for ${device.address}")
+            false
+        } catch (error: Throwable) {
+            Log.w(TAG, "createBondInsecure error for ${device.address}", error)
+            false
+        }
+        if (insecureStarted) {
+            return true
+        }
+
+        return try {
+            val started = device.createBond()
+            if (!started) {
+                Log.w(TAG, "createBond() returned false for ${device.address}")
+            } else {
+                Log.i(TAG, "createBond() initiated for ${device.address}")
+            }
+            started
+        } catch (error: Throwable) {
+            Log.w(TAG, "createBond() error for ${device.address}", error)
             false
         }
     }

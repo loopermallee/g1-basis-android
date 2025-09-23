@@ -50,7 +50,6 @@ internal class G1BLEManager(private val deviceName: String, context: Context, pr
     private var readCharacteristic: BluetoothGattCharacteristic? = null
 
     override fun initialize() {
-        createBondInsecure()
         requestMtu(251)
             .enqueue()
         setConnectionObserver(object: ConnectionObserver {
