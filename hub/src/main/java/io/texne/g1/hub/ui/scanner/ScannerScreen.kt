@@ -212,6 +212,37 @@ private fun ServiceStatusBanner(
                 }
             }
         }
+        G1ServiceCommon.ServiceStatus.PERMISSION_REQUIRED -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Bluetooth permission is required before we can scan.",
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.Black
+                    )
+                    Button(
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Black,
+                            contentColor = Color.White
+                        ),
+                        onClick = onRetry
+                    ) {
+                        Text("GRANT PERMISSION")
+                    }
+                }
+            }
+        }
         else -> {}
     }
 }

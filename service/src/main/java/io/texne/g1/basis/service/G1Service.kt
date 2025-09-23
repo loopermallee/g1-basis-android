@@ -19,8 +19,6 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.nabinbhandari.android.permissions.PermissionHandler
-import com.nabinbhandari.android.permissions.Permissions
 import io.texne.g1.basis.core.G1
 import io.texne.g1.basis.core.G1Gesture
 import io.texne.g1.basis.service.protocol.G1Glasses
@@ -61,6 +59,7 @@ private fun G1Service.ServiceStatus.toInt(): Int =
         G1Service.ServiceStatus.READY -> G1ServiceState.READY
         G1Service.ServiceStatus.LOOKING -> G1ServiceState.LOOKING
         G1Service.ServiceStatus.LOOKED -> G1ServiceState.LOOKED
+        G1Service.ServiceStatus.PERMISSION_REQUIRED -> G1ServiceState.PERMISSION_REQUIRED
         G1Service.ServiceStatus.ERROR -> G1ServiceState.ERROR
     }
 
@@ -120,6 +119,7 @@ class G1Service: Service() {
         READY,
         LOOKING,
         LOOKED,
+        PERMISSION_REQUIRED,
         ERROR
     }
 
@@ -471,17 +471,14 @@ class G1Service: Service() {
             return
         }
 
-        Permissions.check(
-            this@G1Service,
-            permissions,
-            "Please provide Bluetooth and location access so the service can interact with the G1 glasses",
-            Permissions.Options().setCreateNewTask(true),
-            object: PermissionHandler() {
-                override fun onGranted() {
-                    block()
-                }
-            }
+        val missing = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }
+        Log.w(
+            "G1Service",
+            "Missing permissions: ${missing.joinToString()}"
         )
+        state.value = state.value.copy(status = ServiceStatus.PERMISSION_REQUIRED)
     }
 
     private fun parseSideFilterTokens(rawTokens: List<String>?): Set<G1Gesture.Side>? {
@@ -530,42 +527,40 @@ class G1Service: Service() {
     override fun onCreate() {
         super.onCreate()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            withPermissions {
-                val G1_SERVICE_NOTIFICATION_CHANNEL_ID: String = "0xC0FFEE"
-                val G1_SERVICE_NOTIFICATION_ID: Int = 0xC0FFEE
+            val G1_SERVICE_NOTIFICATION_CHANNEL_ID: String = "0xC0FFEE"
+            val G1_SERVICE_NOTIFICATION_ID: Int = 0xC0FFEE
 
-                val notificationChannel = NotificationChannel(
-                    G1_SERVICE_NOTIFICATION_CHANNEL_ID,
-                    getString(R.string.notification_channel_name),
-                    NotificationManager.IMPORTANCE_DEFAULT
+            val notificationChannel = NotificationChannel(
+                G1_SERVICE_NOTIFICATION_CHANNEL_ID,
+                getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+            notificationChannel.description =
+                getString(R.string.notification_channel_description)
+            val notificationManager =
+                getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(notificationChannel)
+
+            val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_service_foreground)
+                .setContentTitle(getString(R.string.notification_channel_name))
+                .setContentText(getString(R.string.notification_text))
+                .setContentIntent(
+                    PendingIntent.getActivity(
+                        this, 0, Intent(this, G1Service::class.java),
+                        PendingIntent.FLAG_IMMUTABLE
+                    )
                 )
-                notificationChannel.description =
-                    getString(R.string.notification_channel_description)
-                val notificationManager =
-                    getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-                notificationManager.createNotificationChannel(notificationChannel)
+                .build()
 
-                val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
-                    .setSmallIcon(R.mipmap.ic_service_foreground)
-                    .setContentTitle(getString(R.string.notification_channel_name))
-                    .setContentText(getString(R.string.notification_text))
-                    .setContentIntent(
-                        PendingIntent.getActivity(
-                            this, 0, Intent(this, G1Service::class.java),
-                            PendingIntent.FLAG_IMMUTABLE
-                        )
-                    )
-                    .build()
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(
-                        G1_SERVICE_NOTIFICATION_ID,
-                        notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-                    )
-                } else {
-                    startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
-                }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    G1_SERVICE_NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
             }
         }
         binder.lookForGlasses()

@@ -34,7 +34,7 @@ abstract class G1ServiceCommon<ServiceInterface> constructor(
         val rssi: Int = RSSI_UNKNOWN
     )
 
-    enum class ServiceStatus { READY, LOOKING, LOOKED, ERROR }
+    enum class ServiceStatus { READY, LOOKING, LOOKED, PERMISSION_REQUIRED, ERROR }
 
     data class State(
         val status: ServiceStatus,
