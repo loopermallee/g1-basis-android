@@ -121,7 +121,9 @@ internal class G1Device(
         }
         try {
             manager.connect(device)
-                .useAutoConnect(true)
+                // Deterministic first-time connection; autoConnect(true) can be used by
+                // background reconnection flows when an active session already exists.
+                .useAutoConnect(false)
                 .retry(3)
                 .timeout(30_000)
                 .suspend()
