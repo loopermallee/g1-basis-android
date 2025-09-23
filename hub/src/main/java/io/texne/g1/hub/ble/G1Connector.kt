@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanRecord
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -17,9 +18,11 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
+import android.util.SparseArray
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -28,10 +31,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.text.Charsets
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanFilter
 import no.nordicsemi.android.support.v18.scanner.ScanResult as NordicScanResult
+import no.nordicsemi.android.support.v18.scanner.ScanRecord as NordicScanRecord
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
 
 /**
@@ -53,10 +58,13 @@ class G1Connector @Inject constructor(
 
     companion object {
         private const val TAG = "G1Connector"
-        private const val SCAN_PASS_DURATION_MS = 7_000L
+        private const val BROAD_SCAN_DURATION_MS = 7_000L
+        private const val STRICT_SCAN_DURATION_MS = 8_000L
         private const val CONNECT_TIMEOUT_MS = 10_000L
         private const val BOND_TIMEOUT_MS = 20_000L
         private val NUS_UUID: UUID = UUID.fromString("6E400001-B5A3-F393-E0A9-E50E24DCCA9E")
+        private val MANUFACTURER_KEYWORDS = listOf("even", "g1")
+        private val KNOWN_MANUFACTURER_IDS = emptySet<Int>()
     }
 
     suspend fun connectSmart(): Result = withContext(Dispatchers.IO) {
@@ -137,7 +145,7 @@ class G1Connector @Inject constructor(
         }
 
         Log.i(TAG, "Starting broad scan pass")
-        when (val broad = runScan(emptyList())) {
+        when (val broad = runScan(emptyList(), BROAD_SCAN_DURATION_MS)) {
             ScanOutcome.Success -> return ScanOutcome.Success
             ScanOutcome.PermissionMissing -> return broad
             ScanOutcome.NotFound -> Unit
@@ -147,10 +155,10 @@ class G1Connector @Inject constructor(
         val filter = ScanFilter.Builder()
             .setServiceUuid(ParcelUuid(NUS_UUID))
             .build()
-        return runScan(listOf(filter))
+        return runScan(listOf(filter), STRICT_SCAN_DURATION_MS)
     }
 
-    private fun runScan(filters: List<ScanFilter>): ScanOutcome {
+    private fun runScan(filters: List<ScanFilter>, durationMs: Long): ScanOutcome {
         if (ensureScanPermissions() == ScanPermission.Missing) {
             return ScanOutcome.PermissionMissing
         }
@@ -186,14 +194,19 @@ class G1Connector @Inject constructor(
 
             private fun handleResult(resultItem: NordicScanResult) {
                 val device = resultItem.device ?: return
-                val name = device.name ?: resultItem.scanRecord?.deviceName ?: return
-                if (!name.contains("Even", ignoreCase = true) && !name.contains("G1", ignoreCase = true)) {
+                val record = resultItem.scanRecord
+                val advertisedName = record?.deviceName ?: device.name
+                val hasNameMatch = advertisedName?.let { matchesEvenName(it) } == true
+                val hasNus = record.hasNusService()
+                val hasManufacturer = record.hasEvenManufacturerData()
+                if (!hasNameMatch && !hasNus && !hasManufacturer) {
                     return
                 }
                 if (!processed.compareAndSet(false, true)) {
                     return
                 }
-                Log.i(TAG, "scan hit ${name} / ${device.address}")
+                val label = advertisedName ?: "unknown"
+                Log.i(TAG, "scan hit ${label} / ${device.address}")
                 runCatching { scanner.stopScan(this) }
                 handler.removeCallbacks(stopRunnable)
                 result = if (connectGattOnce(device)) {
@@ -217,8 +230,8 @@ class G1Connector @Inject constructor(
 
         return try {
             scanner.startScan(filters, settings, callback)
-            handler.postDelayed(stopRunnable, SCAN_PASS_DURATION_MS)
-            latch.await(SCAN_PASS_DURATION_MS + CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            handler.postDelayed(stopRunnable, durationMs)
+            latch.await(durationMs + CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             handler.removeCallbacks(stopRunnable)
             runCatching { scanner.stopScan(callback) }
             result
@@ -229,6 +242,60 @@ class G1Connector @Inject constructor(
             Log.w(TAG, "BLE scanner unavailable", error)
             ScanOutcome.NotFound
         }
+    }
+
+    private fun matchesEvenName(name: String): Boolean {
+        val normalized = name.lowercase(Locale.US)
+        return MANUFACTURER_KEYWORDS.any { normalized.contains(it) }
+    }
+
+    private fun List<ParcelUuid>?.containsNusServiceUuid(): Boolean {
+        if (this == null) {
+            return false
+        }
+        return any { parcelUuid -> parcelUuid?.uuid == NUS_UUID }
+    }
+
+    private fun SparseArray<ByteArray>?.hasEvenManufacturerPayload(): Boolean {
+        val data = this ?: return false
+        for (index in 0 until data.size()) {
+            val companyId = data.keyAt(index)
+            val payload = data.valueAt(index) ?: continue
+            if (payload.isEmpty()) {
+                continue
+            }
+            val keywordMatch = MANUFACTURER_KEYWORDS.any { keyword ->
+                payload.containsKeyword(keyword)
+            }
+            if (keywordMatch || KNOWN_MANUFACTURER_IDS.contains(companyId)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun ScanRecord?.hasNusService(): Boolean =
+        this?.serviceUuids.containsNusServiceUuid()
+
+    private fun NordicScanRecord?.hasNusService(): Boolean =
+        this?.serviceUuids.containsNusServiceUuid()
+
+    private fun ScanRecord?.hasEvenManufacturerData(): Boolean =
+        this?.manufacturerSpecificData.hasEvenManufacturerPayload()
+
+    private fun NordicScanRecord?.hasEvenManufacturerData(): Boolean =
+        this?.manufacturerSpecificData.hasEvenManufacturerPayload()
+
+    private fun ByteArray.containsKeyword(keyword: String): Boolean {
+        if (keyword.isEmpty()) {
+            return false
+        }
+        val text = try {
+            String(this, Charsets.ISO_8859_1)
+        } catch (error: Throwable) {
+            return false
+        }
+        return text.contains(keyword, ignoreCase = true)
     }
 
     @SuppressLint("MissingPermission")
