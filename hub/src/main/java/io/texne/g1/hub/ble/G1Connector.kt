@@ -3,11 +3,8 @@ package io.texne.g1.hub.ble
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanRecord
-import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -23,6 +20,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
+import io.texne.g1.basis.core.G1BLEManager
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -355,57 +353,23 @@ class G1Connector @Inject constructor(
             Log.w(TAG, "Unable to bond with ${device.address}")
             return false
         }
-        var success = false
-        val latch = CountDownLatch(1)
-        val completed = AtomicBoolean(false)
-
-        val callback = object : BluetoothGattCallback() {
-            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-                Log.i(TAG, "onConnectionStateChange status=$status state=$newState")
-                if (status != BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.w(TAG, "GATT_STATUS=$status")
-                }
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    gatt.requestMtu(185)
-                    gatt.discoverServices()
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    if (completed.compareAndSet(false, true)) {
-                        runCatching { gatt.close() }
-                        latch.countDown()
-                    }
-                }
-            }
-
-            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-                Log.i(TAG, "MTU=$mtu status=$status")
-            }
-
-            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                val nus = gatt.getService(NUS_UUID)
-                Log.i(TAG, "NUS present? ${nus != null}")
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    Log.w(TAG, "GATT_STATUS=$status")
-                }
-                success = status == BluetoothGatt.GATT_SUCCESS && nus != null
-                if (completed.compareAndSet(false, true)) {
-                    latch.countDown()
-                }
-            }
+        if (G1BLEManager.hasCached(device.address)) {
+            Log.i(TAG, "Session already cached for ${device.address}")
+            rememberSuccessfulConnection(device)
+            return true
         }
-
+        val manager = G1BLEManager.create(context, device)
         val connected = try {
-            device.connectGatt(context, /* autoConnect = */ false, callback)
-            val awaited = latch.await(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (!awaited) {
-                Log.w(TAG, "connectGattOnce timeout for ${device.address}")
-            }
-            success
+            manager.connectBlocking(CONNECT_TIMEOUT_MS)
         } catch (error: Throwable) {
             Log.w(TAG, "connectGattOnce error", error)
             false
         }
         if (connected) {
+            G1BLEManager.cache(manager)
             rememberSuccessfulConnection(device)
+        } else {
+            manager.close()
         }
         return connected
     }

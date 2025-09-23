@@ -66,6 +66,7 @@ dependencies {
     implementation(project(":service"))
     implementation(project(":client"))
     implementation(project(":aidl"))
+    implementation(project(":core"))
     implementation(libs.androidx.security.crypto)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)

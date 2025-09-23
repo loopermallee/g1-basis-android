@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import no.nordicsemi.android.ble.ktx.suspend
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -64,8 +63,8 @@ internal class G1Device(
     @SuppressLint("MissingPermission")
     suspend fun connect(context: Context, scope: CoroutineScope): Boolean {
         if(this::manager.isInitialized.not()) {
-            val deviceName = device.name ?: device.address
-            manager = G1BLEManager(deviceName, context, scope)
+            manager = G1BLEManager.claim(device)
+                ?: G1BLEManager.create(context, device)
             scope.launch {
                 manager.connectionState.collect {
                     Log.d("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
@@ -119,28 +118,23 @@ internal class G1Device(
                 }
             }
         }
-        try {
-            manager.connect(device)
-                // Deterministic first-time connection; autoConnect(true) can be used by
-                // background reconnection flows when an active session already exists.
-                .useAutoConnect(false)
-                .retry(3)
-                .timeout(30_000)
-                .suspend()
-            startPeriodicBatteryCheck()
-            return true
-        } catch (e: Throwable) {
-            Log.e(
-                "G1BLEManager",
-                "ERROR: Device connection error ${e}"
-            )
+        val connected = try {
+            manager.ensureConnected(30_000)
+        } catch (error: Throwable) {
+            Log.e("G1BLEManager", "ERROR: Device connection error $error", error)
+            false
+        }
+        if (!connected) {
+            Log.e("G1BLEManager", "Failed to establish connection to ${device.address}")
             return false
         }
+        startPeriodicBatteryCheck()
+        return true
     }
 
     suspend fun disconnect() {
         stopHeartbeat()
-        manager.disconnect().suspend()
+        manager.disconnect()
     }
 
     private fun advanceQueue() {

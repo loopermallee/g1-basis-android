@@ -13,6 +13,7 @@ const val DFU_SERVICE_UUID = "00001530-1212-EFDE-1523-785FEABCD123"
 enum class OutgoingPacketType(val label: String) {
     EXIT("EXIT"),                                                                             // x18
     GET_BATTERY_LEVEL("GET_BATTERY_LEVEL"),                                                   // x2C
+    HEARTBEAT("HEARTBEAT"),                                                                   // x25
     SEND_AI_RESULT("SEND_AI_RESULT"),                                                         // x4E
     ;
     override fun toString() = label
@@ -125,6 +126,11 @@ class BatteryLevelRequestPacket: OutgoingPacket(
     // EXAMPLE: 2C
     OutgoingPacketType.GET_BATTERY_LEVEL,
     byteArrayOf(0x2C)
+)
+
+class HeartbeatPacket: OutgoingPacket(
+    OutgoingPacketType.HEARTBEAT,
+    byteArrayOf(0x25)
 )
 
 // send text
