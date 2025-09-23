@@ -3,10 +3,13 @@ package io.texne.g1.basis.core
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanRecord
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelUuid
 import android.util.Log
+import android.util.SparseArray
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
@@ -28,11 +31,16 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
+import no.nordicsemi.android.support.v18.scanner.ScanFilter
 import no.nordicsemi.android.support.v18.scanner.ScanResult
 import no.nordicsemi.android.support.v18.scanner.ScanSettings
-import kotlin.time.Duration
 import java.util.Locale
+import java.util.UUID
+import kotlin.collections.ArrayDeque
 import kotlin.math.roundToInt
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+import kotlin.text.Charsets
 
 @OptIn(DelicateCoroutinesApi::class)
 internal fun <T1, T2, R> StateFlow<T1>.combineState(
@@ -257,11 +265,29 @@ class G1 {
     // find devices --------------------------------------------------------------------------------
 
     companion object {
+        private val NUS_UUID: UUID = UUID.fromString(UART_SERVICE_UUID)
+        private val NUS_PARCEL_UUID: ParcelUuid = ParcelUuid(NUS_UUID)
+        private val BROAD_SCAN_DURATION = 7.seconds
+        private val STRICT_SCAN_DURATION = 8.seconds
+        private val MANUFACTURER_KEYWORDS = listOf("even", "g1")
+        private val KNOWN_MANUFACTURER_IDS = emptySet<Int>()
+
+        private data class ScanPass(
+            val filters: List<ScanFilter>,
+            val duration: Duration
+        )
+
+        private data class ManufacturerDataMatch(
+            val companyId: Int,
+            val payload: ByteArray
+        )
+
         internal data class DeviceCandidate(
             val device: BluetoothDevice,
             val identifier: String,
-            val side: G1Gesture.Side,
-            val rssi: Int?
+            val side: G1Gesture.Side?,
+            val rssi: Int?,
+            val advertisedName: String? = null
         )
 
         internal data class FoundPair(
@@ -274,6 +300,137 @@ class G1 {
             val left: DeviceCandidate,
             val right: DeviceCandidate
         )
+
+        private fun ScanRecord?.hasNusService(): Boolean {
+            val uuids = this?.serviceUuids ?: return false
+            return uuids.any { parcelUuid -> parcelUuid?.uuid == NUS_UUID }
+        }
+
+        private fun ScanRecord?.findManufacturerMatch(): ManufacturerDataMatch? {
+            val sparseArray = this?.manufacturerSpecificData ?: return null
+            for (index in 0 until sparseArray.size()) {
+                val companyId = sparseArray.keyAt(index)
+                val payload = sparseArray.valueAt(index) ?: continue
+                if (payload.isEmpty()) {
+                    continue
+                }
+                val keywordMatch = MANUFACTURER_KEYWORDS.any { keyword ->
+                    payload.containsKeyword(keyword)
+                }
+                if (keywordMatch || KNOWN_MANUFACTURER_IDS.contains(companyId)) {
+                    return ManufacturerDataMatch(companyId, payload)
+                }
+            }
+            return null
+        }
+
+        private fun ManufacturerDataMatch.identifier(address: String): String? {
+            val base = addressPairIdentifier(address) ?: return null
+            val prefixLength = minOf(payload.size, 6)
+            val prefix = if (prefixLength > 0) {
+                payload.copyOfRange(0, prefixLength)
+            } else {
+                ByteArray(0)
+            }
+            val payloadHex = if (prefix.isNotEmpty()) {
+                prefix.toHexString()
+            } else {
+                payload.toHexString()
+            }
+            return "${base}_mfg_${companyId.toString(16).padStart(4, '0')}_${payloadHex}"
+        }
+
+        private fun ByteArray.containsKeyword(keyword: String): Boolean {
+            if (keyword.isEmpty()) {
+                return false
+            }
+            val candidate = try {
+                String(this, Charsets.ISO_8859_1)
+            } catch (error: Throwable) {
+                return false
+            }
+            return candidate.contains(keyword, ignoreCase = true)
+        }
+
+        private fun ByteArray.toHexString(): String =
+            joinToString(separator = "") { byte ->
+                byte.toInt().and(0xFF).toString(16).padStart(2, '0')
+            }
+
+        private fun addressPairIdentifier(address: String): String? {
+            val sanitized = address.uppercase(Locale.US).filter { it.isLetterOrDigit() }
+            if (sanitized.length <= 2) {
+                return null
+            }
+            return sanitized.dropLast(2)
+        }
+
+        private fun buildSidePreference(sideFilter: Set<G1Gesture.Side>?): List<G1Gesture.Side> {
+            if (sideFilter.isNullOrEmpty()) {
+                return listOf(G1Gesture.Side.LEFT, G1Gesture.Side.RIGHT)
+            }
+            val preferred = sideFilter.toMutableList()
+            preferred.addAll(G1Gesture.Side.entries.filter { it !in sideFilter })
+            return preferred
+        }
+
+        private fun DeviceCandidate.withSide(side: G1Gesture.Side): DeviceCandidate {
+            return if (this.side == side) {
+                this
+            } else {
+                copy(side = side)
+            }
+        }
+
+        private fun mergeCandidate(
+            existing: FoundPair?,
+            candidate: DeviceCandidate,
+            sidePreference: List<G1Gesture.Side>
+        ): FoundPair {
+            val explicitSide = candidate.side
+            return when (explicitSide) {
+                G1Gesture.Side.LEFT -> FoundPair(candidate, existing?.right)
+                G1Gesture.Side.RIGHT -> FoundPair(existing?.left, candidate)
+                null -> {
+                    val existingLeft = existing?.left
+                    val existingRight = existing?.right
+                    when {
+                        existingLeft == null && existingRight == null -> {
+                            val preferred = sidePreference.firstOrNull() ?: G1Gesture.Side.LEFT
+                            if (preferred == G1Gesture.Side.LEFT) {
+                                FoundPair(candidate.withSide(G1Gesture.Side.LEFT), null)
+                            } else {
+                                FoundPair(null, candidate.withSide(G1Gesture.Side.RIGHT))
+                            }
+                        }
+                        existingLeft == null -> FoundPair(candidate.withSide(G1Gesture.Side.LEFT), existingRight)
+                        existingRight == null -> FoundPair(existingLeft, candidate.withSide(G1Gesture.Side.RIGHT))
+                        else -> existing
+                    }
+                }
+            }
+        }
+
+        private fun buildScanPasses(totalDuration: Duration): ArrayDeque<ScanPass> {
+            val passes = ArrayDeque<ScanPass>()
+            val broadDuration = if (totalDuration < BROAD_SCAN_DURATION) totalDuration else BROAD_SCAN_DURATION
+            if (broadDuration > Duration.ZERO) {
+                passes.add(ScanPass(emptyList(), broadDuration))
+            }
+
+            val remaining = totalDuration - broadDuration
+            if (remaining > Duration.ZERO) {
+                val strictDuration = if (remaining < STRICT_SCAN_DURATION) remaining else STRICT_SCAN_DURATION
+                if (strictDuration > Duration.ZERO) {
+                    val filter = ScanFilter.Builder()
+                        .setServiceUuid(NUS_PARCEL_UUID)
+                        .build()
+                    passes.add(ScanPass(listOf(filter), strictDuration))
+                }
+            }
+
+            return passes
+        }
 
         private fun pairingIdentifier(name: String?, address: String): String? {
             val value = name ?: return null
@@ -327,15 +484,27 @@ class G1 {
 
         private fun candidateFromScanResult(result: ScanResult): DeviceCandidate? {
             val device = result.device
-            val scanRecordName = result.scanRecord?.deviceName
-            val name = scanRecordName ?: result.device.name ?: return null
-            if (!isRecognizedDeviceName(name)) {
+            val scanRecord = result.scanRecord
+            val advertisedName = scanRecord?.deviceName ?: device.name
+            val hasRecognizedName = advertisedName?.let { isRecognizedDeviceName(it) } == true
+            val hasNusService = scanRecord.hasNusService()
+            val manufacturerMatch = scanRecord.findManufacturerMatch()
+
+            if (!hasRecognizedName && !hasNusService && manufacturerMatch == null) {
                 return null
             }
-            val identifier = pairingIdentifier(name, device.address) ?: return null
-            val side = sideFromName(name) ?: return null
+
+            val identifier = pairingIdentifier(advertisedName, device.address)
+                ?: manufacturerMatch?.identifier(device.address)
+                ?: addressPairIdentifier(device.address)
+                ?: return null
+
+            val side = when {
+                hasRecognizedName -> sideFromName(advertisedName)
+                else -> null
+            }
             val rssi = result.rssi.takeIf { it != 0 }
-            return DeviceCandidate(device, identifier, side, rssi)
+            return DeviceCandidate(device, identifier, side, rssi, advertisedName)
         }
 
         @SuppressLint("MissingPermission")
@@ -360,7 +529,7 @@ class G1 {
 
         private fun isRecognizedDeviceName(name: String): Boolean {
             val normalized = name.lowercase(Locale.US)
-            return normalized.contains("even") || normalized.contains("g1")
+            return MANUFACTURER_KEYWORDS.any { keyword -> normalized.contains(keyword) }
         }
 
         @SuppressLint("MissingPermission")
@@ -416,46 +585,49 @@ class G1 {
             rawResults: List<ScanResult?>,
             foundAddresses: MutableList<String>,
             foundPairs: MutableMap<String, FoundPair>,
-            sideFilter: Set<G1Gesture.Side>? = null
+            sideFilter: Set<G1Gesture.Side>? = null,
+            addressDedupe: MutableSet<String>? = null
         ): List<G1DevicePair> {
             val completedPairs = mutableListOf<G1DevicePair>()
             val seenAddresses = mutableSetOf<String>()
             val trackedIdentifiers = mutableSetOf<String>().apply { addAll(foundPairs.keys) }
+            val sidePreference = buildSidePreference(sideFilter)
 
             rawResults
                 .asSequence()
                 .filterNotNull()
-                .mapNotNull { result ->
-                    val candidate = candidateFromScanResult(result) ?: return@mapNotNull null
+                .forEach { result ->
+                    val candidate = candidateFromScanResult(result) ?: return@forEach
                     val address = candidate.device.address
-                    if (!seenAddresses.add(address) || foundAddresses.contains(address)) {
-                        return@mapNotNull null
+                    if (!seenAddresses.add(address)) {
+                        return@forEach
                     }
-                    Pair(candidate, address)
-                }
-                .forEach { (candidate, address) ->
-                    val identifier = candidate.identifier
+                    val alreadyKnown = addressDedupe?.contains(address) ?: foundAddresses.contains(address)
+                    if (alreadyKnown) {
+                        return@forEach
+                    }
 
+                    val identifier = candidate.identifier
                     if (sideFilter != null && identifier !in trackedIdentifiers) {
-                        if (sideFilter.contains(candidate.side)) {
-                            trackedIdentifiers.add(identifier)
-                        } else {
+                        val matchesFilter = when (val side = candidate.side) {
+                            null -> sidePreference.firstOrNull()?.let { filterSide ->
+                                sideFilter.contains(filterSide)
+                            } ?: false
+                            else -> sideFilter.contains(side)
+                        }
+                        if (!matchesFilter) {
                             return@forEach
                         }
-                    } else {
-                        trackedIdentifiers.add(identifier)
                     }
 
-                    foundAddresses.add(address)
+                    trackedIdentifiers.add(identifier)
 
-                    val existing = foundPairs[identifier]
-                    val resolvedLeft = when {
-                        candidate.side == G1Gesture.Side.LEFT -> candidate
-                        else -> existing?.left
-                    }
-                    val resolvedRight = when {
-                        candidate.side == G1Gesture.Side.RIGHT -> candidate
-                        else -> existing?.right
+                    val updatedPair = mergeCandidate(foundPairs[identifier], candidate, sidePreference)
+                    val resolvedLeft = updatedPair.left
+                    val resolvedRight = updatedPair.right
+
+                    if (addressDedupe?.add(address) != false) {
+                        foundAddresses.add(address)
                     }
 
                     if (resolvedLeft != null && resolvedRight != null) {
@@ -463,7 +635,7 @@ class G1 {
                         trackedIdentifiers.remove(identifier)
                         completedPairs.add(G1DevicePair(identifier, resolvedLeft, resolvedRight))
                     } else {
-                        foundPairs[identifier] = FoundPair(resolvedLeft, resolvedRight)
+                        foundPairs[identifier] = updatedPair
                     }
                 }
 
@@ -483,6 +655,7 @@ class G1 {
                 .build()
             val handler = Handler(Looper.getMainLooper())
             val foundAddresses = mutableListOf<String>()
+            val foundAddressSet = mutableSetOf<String>()
             val foundPairs = mutableMapOf<String, FoundPair>()
 
             val bluetoothManager = context.getSystemService(BluetoothManager::class.java)
@@ -497,7 +670,7 @@ class G1 {
             bondedPairs.forEach { pair ->
                 listOf(pair.left.device.address, pair.right.device.address)
                     .forEach { address ->
-                        if (!foundAddresses.contains(address)) {
+                        if (foundAddressSet.add(address)) {
                             foundAddresses.add(address)
                         }
                     }
@@ -514,8 +687,10 @@ class G1 {
             var scanStarted = false
 
             if (bondedPairs.isEmpty()) {
+                val passes = buildScanPasses(duration)
+
                 fun handleResults(results: List<ScanResult?>) {
-                    collectCompletePairs(results, foundAddresses, foundPairs, sideFilter)
+                    collectCompletePairs(results, foundAddresses, foundPairs, sideFilter, foundAddressSet)
                         .forEach { pair ->
                             trySendBlocking(
                                 G1(
@@ -524,6 +699,47 @@ class G1 {
                                 )
                             )
                         }
+                }
+
+                fun stopActivePass() {
+                    stopScanRunnable?.let { handler.removeCallbacks(it) }
+                    stopScanRunnable = null
+                    if (scanStarted) {
+                        scanCallback?.let { callback ->
+                            runCatching { scanner.stopScan(callback) }
+                        }
+                        scanStarted = false
+                    }
+                }
+
+                fun startNextPass() {
+                    val nextPass = passes.removeFirstOrNull()
+                    if (nextPass == null) {
+                        trySendBlocking(null)
+                        close()
+                        return
+                    }
+
+                    try {
+                        scanner.startScan(nextPass.filters, settings, scanCallback!!)
+                        scanStarted = true
+                    } catch (error: SecurityException) {
+                        Log.w("G1", "Unable to start BLE scan", error)
+                        trySendBlocking(null)
+                        close()
+                        return
+                    } catch (error: IllegalStateException) {
+                        Log.w("G1", "Unable to start BLE scan", error)
+                        trySendBlocking(null)
+                        close()
+                        return
+                    }
+
+                    stopScanRunnable = Runnable {
+                        stopActivePass()
+                        startNextPass()
+                    }
+                    handler.postDelayed(stopScanRunnable!!, nextPass.duration.inWholeMilliseconds)
                 }
 
                 val callback = object : ScanCallback() {
@@ -536,42 +752,30 @@ class G1 {
                     override fun onBatchScanResults(results: List<ScanResult?>) {
                         handleResults(results)
                     }
+
+                    override fun onScanFailed(errorCode: Int) {
+                        Log.w("G1", "BLE scan failed with code=$errorCode")
+                        stopActivePass()
+                        trySendBlocking(null)
+                        close()
+                    }
                 }
                 scanCallback = callback
 
-                try {
-                    scanner.startScan(emptyList(), settings, callback)
-                    scanStarted = true
-                } catch (error: SecurityException) {
-                    Log.w("G1", "Unable to start BLE scan", error)
+                if (passes.isEmpty()) {
                     trySendBlocking(null)
                     close()
-                } catch (error: IllegalStateException) {
-                    Log.w("G1", "Unable to start BLE scan", error)
-                    trySendBlocking(null)
-                    close()
+                } else {
+                    startNextPass()
                 }
 
-                if (scanStarted) {
-                    stopScanRunnable = Runnable {
-                        runCatching { scanner.stopScan(callback) }
-                        trySendBlocking(null)
-                    }
-                    handler.postDelayed(stopScanRunnable!!, duration.inWholeMilliseconds)
+                awaitClose {
+                    stopActivePass()
                 }
             } else {
                 trySendBlocking(null)
                 close()
-                scanCallback = null
-            }
-
-            awaitClose {
-                stopScanRunnable?.let { handler.removeCallbacks(it) }
-                if (scanStarted) {
-                    scanCallback?.let { callback ->
-                        runCatching { scanner.stopScan(callback) }
-                    }
-                }
+                awaitClose { }
             }
         }
     }

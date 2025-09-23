@@ -1,6 +1,7 @@
 package io.texne.g1.basis.core
 
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.le.ScanRecord
 import io.mockk.every
 import io.mockk.mockk
 import io.texne.g1.basis.core.G1Gesture
@@ -8,6 +9,9 @@ import no.nordicsemi.android.support.v18.scanner.ScanResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import android.os.ParcelUuid
+import android.util.SparseArray
+import java.util.UUID
 
 class G1FindTest {
 
@@ -148,6 +152,83 @@ class G1FindTest {
     }
 
     @Test
+    fun `devices without names but with nus uuid are paired`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+        val serviceUuid = UUID.fromString(UART_SERVICE_UUID)
+
+        val results = listOf(
+            fakeScanResult(
+                "AA:BB:CC:DD:40:01",
+                null,
+                serviceUuids = listOf(serviceUuid)
+            ),
+            fakeScanResult(
+                "AA:BB:CC:DD:40:02",
+                null,
+                serviceUuids = listOf(serviceUuid)
+            ),
+        )
+
+        val completed = G1.collectCompletePairs(
+            results,
+            foundAddresses,
+            foundPairs,
+            addressDedupe = mutableSetOf()
+        )
+
+        assertEquals(1, completed.size)
+        val pair = completed.first()
+        assertEquals("AABBCCDD40", pair.identifier)
+        assertEquals("AA:BB:CC:DD:40:01", pair.left.device.address)
+        assertEquals("AA:BB:CC:DD:40:02", pair.right.device.address)
+        assertTrue(foundPairs.isEmpty())
+        assertEquals(
+            listOf("AA:BB:CC:DD:40:01", "AA:BB:CC:DD:40:02"),
+            foundAddresses
+        )
+    }
+
+    @Test
+    fun `devices with manufacturer data but no names are paired`() {
+        val foundAddresses = mutableListOf<String>()
+        val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
+        val payload = "Even".encodeToByteArray()
+        val manufacturerId = 0x1234
+
+        val results = listOf(
+            fakeScanResult(
+                "AA:BB:CC:DD:41:01",
+                null,
+                manufacturerData = listOf(manufacturerId to payload)
+            ),
+            fakeScanResult(
+                "AA:BB:CC:DD:41:02",
+                null,
+                manufacturerData = listOf(manufacturerId to payload)
+            ),
+        )
+
+        val dedupe = mutableSetOf<String>()
+        val completed = G1.collectCompletePairs(
+            results,
+            foundAddresses,
+            foundPairs,
+            addressDedupe = dedupe
+        )
+
+        assertEquals(1, completed.size)
+        val pair = completed.first()
+        assertTrue(pair.identifier.startsWith("AABBCCDD41_"))
+        assertEquals(
+            listOf("AA:BB:CC:DD:41:01", "AA:BB:CC:DD:41:02"),
+            foundAddresses
+        )
+        assertEquals(setOf("AA:BB:CC:DD:41:01", "AA:BB:CC:DD:41:02"), dedupe)
+        assertTrue(foundPairs.isEmpty())
+    }
+
+    @Test
     fun `filtering for left side still produces pairs`() {
         val foundAddresses = mutableListOf<String>()
         val foundPairs = mutableMapOf<String, G1.Companion.FoundPair>()
@@ -271,12 +352,29 @@ class G1FindTest {
         assertEquals("Even-G1 7 R hyphen", pair.right.device.name)
     }
 
-    private fun fakeScanResult(address: String, name: String): ScanResult {
+    private fun fakeScanResult(
+        address: String,
+        name: String?,
+        serviceUuids: List<UUID> = emptyList(),
+        manufacturerData: List<Pair<Int, ByteArray>> = emptyList(),
+        rssi: Int = -60
+    ): ScanResult {
         val device = mockk<BluetoothDevice>()
         every { device.address } returns address
         every { device.name } returns name
+        val scanRecord = mockk<ScanRecord>()
+        every { scanRecord.deviceName } returns name
+        val parcelUuids = serviceUuids.takeIf { it.isNotEmpty() }?.map { ParcelUuid(it) }
+        every { scanRecord.serviceUuids } returns parcelUuids
+        val sparseArray = SparseArray<ByteArray>()
+        manufacturerData.forEach { (id, payload) ->
+            sparseArray.put(id, payload)
+        }
+        every { scanRecord.manufacturerSpecificData } returns sparseArray
         val scanResult = mockk<ScanResult>()
         every { scanResult.device } returns device
+        every { scanResult.scanRecord } returns scanRecord
+        every { scanResult.rssi } returns rssi
         return scanResult
     }
 
