@@ -192,11 +192,11 @@ class G1Connector @Inject constructor(
 
             private fun handleResult(resultItem: NordicScanResult) {
                 val device = resultItem.device ?: return
-                val scanRecord = resultItem.scanRecord
-                val advertisedName = scanRecord?.deviceName ?: device.name
+                val record = resultItem.scanRecord
+                val advertisedName = record?.deviceName ?: device.name
                 val hasNameMatch = advertisedName?.let { matchesEvenName(it) } == true
-                val hasNus = scanRecord.hasNusService()
-                val hasManufacturer = scanRecord.hasEvenManufacturerData()
+                val hasNus = record.hasNusService()
+                val hasManufacturer = record.hasEvenManufacturerData()
                 if (!hasNameMatch && !hasNus && !hasManufacturer) {
                     return
                 }
