@@ -3,11 +3,8 @@ package io.texne.g1.hub.ble
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanRecord
-import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -33,6 +30,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.text.Charsets
+import io.texne.g1.basis.core.G1BLEManager
 import no.nordicsemi.android.support.v18.scanner.BluetoothLeScannerCompat
 import no.nordicsemi.android.support.v18.scanner.ScanCallback
 import no.nordicsemi.android.support.v18.scanner.ScanFilter
@@ -355,55 +353,50 @@ class G1Connector @Inject constructor(
             Log.w(TAG, "Unable to bond with ${device.address}")
             return false
         }
-        var success = false
+        val manager = G1BLEManager.getOrCreate(device, context)
         val latch = CountDownLatch(1)
-        val completed = AtomicBoolean(false)
+        val success = AtomicBoolean(false)
 
-        val callback = object : BluetoothGattCallback() {
-            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-                Log.i(TAG, "onConnectionStateChange status=$status state=$newState")
-                if (status != BluetoothGatt.GATT_SUCCESS && newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    Log.w(TAG, "GATT_STATUS=$status")
-                }
-                if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    gatt.requestMtu(185)
-                    gatt.discoverServices()
-                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    if (completed.compareAndSet(false, true)) {
-                        runCatching { gatt.close() }
-                        latch.countDown()
-                    }
-                }
-            }
+        val request = try {
+            manager.connectIfNeeded(device)
+        } catch (error: Throwable) {
+            Log.w(TAG, "connectIfNeeded error", error)
+            null
+        }
 
-            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-                Log.i(TAG, "MTU=$mtu status=$status")
-            }
-
-            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-                val nus = gatt.getService(NUS_UUID)
-                Log.i(TAG, "NUS present? ${nus != null}")
-                if (status != BluetoothGatt.GATT_SUCCESS) {
-                    Log.w(TAG, "GATT_STATUS=$status")
-                }
-                success = status == BluetoothGatt.GATT_SUCCESS && nus != null
-                if (completed.compareAndSet(false, true)) {
+        if (request == null) {
+            success.set(true)
+            manager.currentGatt()?.let { G1BLEManager.attach(it) }
+        } else {
+            request
+                .useAutoConnect(false)
+                .timeout(CONNECT_TIMEOUT_MS.toLong())
+                .fail { _, status ->
+                    Log.w(TAG, "GATT connect failed for ${device.address} (status=$status)")
+                    success.set(false)
                     latch.countDown()
                 }
+                .invalid {
+                    Log.w(TAG, "GATT connect request invalid for ${device.address}")
+                    success.set(false)
+                    latch.countDown()
+                }
+                .done {
+                    manager.currentGatt()?.let { G1BLEManager.attach(it) }
+                    success.set(true)
+                    latch.countDown()
+                }
+                .enqueue()
+
+            val awaited = latch.await(CONNECT_TIMEOUT_MS + 2000L, TimeUnit.MILLISECONDS)
+            if (!awaited) {
+                Log.w(TAG, "connectGattOnce timeout for ${device.address}")
+                success.set(false)
+                runCatching { request.cancelPendingConnection() }
             }
         }
 
-        val connected = try {
-            device.connectGatt(context, /* autoConnect = */ false, callback)
-            val awaited = latch.await(CONNECT_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (!awaited) {
-                Log.w(TAG, "connectGattOnce timeout for ${device.address}")
-            }
-            success
-        } catch (error: Throwable) {
-            Log.w(TAG, "connectGattOnce error", error)
-            false
-        }
+        val connected = success.get()
         if (connected) {
             rememberSuccessfulConnection(device)
         }

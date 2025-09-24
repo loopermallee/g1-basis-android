@@ -58,14 +58,17 @@ internal class G1Device(
     // manager -------------------------------------------------------------------------------------
 
     private lateinit var manager: G1BLEManager
+    private var managerObserversRegistered = false
 
     // connection ----------------------------------------------------------------------------------
 
     @SuppressLint("MissingPermission")
     suspend fun connect(context: Context, scope: CoroutineScope): Boolean {
-        if(this::manager.isInitialized.not()) {
-            val deviceName = device.name ?: device.address
-            manager = G1BLEManager(deviceName, context, scope)
+        if (this::manager.isInitialized.not()) {
+            manager = G1BLEManager.getOrCreate(device, context)
+        }
+        if (!managerObserversRegistered) {
+            managerObserversRegistered = true
             scope.launch {
                 manager.connectionState.collect {
                     Log.d("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
@@ -120,13 +123,17 @@ internal class G1Device(
             }
         }
         try {
-            manager.connect(device)
-                // Deterministic first-time connection; autoConnect(true) can be used by
-                // background reconnection flows when an active session already exists.
-                .useAutoConnect(false)
-                .retry(3)
-                .timeout(30_000)
-                .suspend()
+            val request = manager.connectIfNeeded(device)
+            if (request != null) {
+                request
+                    // Deterministic first-time connection; autoConnect(true) can be used by
+                    // background reconnection flows when an active session already exists.
+                    .useAutoConnect(false)
+                    .retry(3)
+                    .timeout(30_000)
+                    .suspend()
+                manager.currentGatt()?.let { G1BLEManager.attach(it) }
+            }
             startPeriodicBatteryCheck()
             return true
         } catch (e: Throwable) {
@@ -140,7 +147,7 @@ internal class G1Device(
 
     suspend fun disconnect() {
         stopHeartbeat()
-        manager.disconnect().suspend()
+        manager.disconnectAndClose()
     }
 
     private fun advanceQueue() {
