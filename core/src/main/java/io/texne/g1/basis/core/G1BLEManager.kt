@@ -109,34 +109,24 @@ public class G1BLEManager private constructor(
                 BleLogger.warn("G1BLEManager", "MTU request failed for $deviceName (status=$status)")
             }
             .enqueue()
-        setConnectionObserver(object: ConnectionObserver {
+        setConnectionObserver(object : ConnectionObserver {
             override fun onDeviceConnecting(device: BluetoothDevice) {
                 writableConnectionState.value = G1.ConnectionState.CONNECTING
             }
 
             override fun onDeviceConnected(device: BluetoothDevice) {
-                // EMPTY
-            }
-
-            override fun onDeviceFailedToConnect(
-                device: BluetoothDevice,
-                reason: Int
-            ) {
-                writableConnectionState.value = G1.ConnectionState.ERROR
-            }
-
-            override fun onDeviceReady(device: BluetoothDevice) {
                 writableConnectionState.value = G1.ConnectionState.CONNECTED
+            }
+
+            override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {
+                writableConnectionState.value = G1.ConnectionState.ERROR
             }
 
             override fun onDeviceDisconnecting(device: BluetoothDevice) {
                 writableConnectionState.value = G1.ConnectionState.DISCONNECTING
             }
 
-            override fun onDeviceDisconnected(
-                device: BluetoothDevice,
-                reason: Int
-            ) {
+            override fun onDeviceDisconnected(device: BluetoothDevice, reason: Int) {
                 writableConnectionState.value = G1.ConnectionState.DISCONNECTED
                 stopHeartbeat()
             }
