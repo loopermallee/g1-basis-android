@@ -8,6 +8,7 @@ import android.content.Context
 import android.util.Log
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,6 +25,7 @@ import no.nordicsemi.android.ble.ConnectRequest
 import no.nordicsemi.android.ble.data.Data
 import no.nordicsemi.android.ble.observer.ConnectionObserver
 import no.nordicsemi.android.ble.ktx.suspend
+import no.nordicsemi.android.ble.exception.RequestFailedException
 
 private fun Data.toByteArray(): ByteArray {
     val array = ByteArray(this.size())
@@ -84,6 +86,8 @@ public class G1BLEManager private constructor(
 
     private val scopeJob = SupervisorJob()
     private val internalScope: CoroutineScope = CoroutineScope(scopeJob + Dispatchers.IO)
+    private val appContext: Context = context.applicationContext
+    private val bondRecoveryInProgress = AtomicBoolean(false)
 
     private val writableConnectionState = MutableStateFlow<G1.ConnectionState>(G1.ConnectionState.DISCONNECTED)
     val connectionState = writableConnectionState.asStateFlow()
@@ -151,11 +155,12 @@ public class G1BLEManager private constructor(
             .done {
                 startHeartbeat()
             }
-            .fail { _, status ->
+            .fail { device, status ->
                 Log.e(
                     "G1BLEManager",
                     "Failed to enable notifications for $deviceName (status: $status)"
                 )
+                scheduleBondRecovery(device, status, "enableNotifications")
             }
             .enqueue()
     }
@@ -195,6 +200,9 @@ public class G1BLEManager private constructor(
                     "Failed to send packet on attempt $attemptNumber (status=${writableConnectionState.value}): ${e.message}",
                     e
                 )
+                if (e is RequestFailedException) {
+                    scheduleBondRecovery(deviceGatt?.device, e.status, "writeTx")
+                }
                 false
             }
         }
@@ -300,6 +308,61 @@ public class G1BLEManager private constructor(
     private fun stopHeartbeat() {
         heartbeatJob?.cancel()
         heartbeatJob = null
+    }
+
+    private fun Int.isInsufficientAuthenticationStatus(): Boolean =
+        this == BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION ||
+            this == BluetoothGatt.GATT_INSUFFICIENT_AUTHORIZATION
+
+    private fun scheduleBondRecovery(device: BluetoothDevice?, status: Int, stage: String) {
+        if (!status.isInsufficientAuthenticationStatus()) {
+            return
+        }
+        val target = device ?: deviceGatt?.device
+        if (target == null) {
+            Log.w(
+                "G1BLEManager",
+                "Bond recovery requested but device unavailable for $deviceName (stage=$stage)"
+            )
+            return
+        }
+        if (!bondRecoveryInProgress.compareAndSet(false, true)) {
+            Log.d(
+                "G1BLEManager",
+                "Bond recovery already in progress for $deviceName (stage=$stage)"
+            )
+            return
+        }
+        internalScope.launch {
+            try {
+                Log.i(
+                    "G1BLEManager",
+                    "Attempting bond recovery for $deviceName (stage=$stage, status=$status)"
+                )
+                val bonded = ensureBond(appContext, target, DEFAULT_BOND_TIMEOUT_MS, "G1BLEManager")
+                if (!bonded) {
+                    Log.w(
+                        "G1BLEManager",
+                        "Bond recovery failed for $deviceName (stage=$stage)"
+                    )
+                    return@launch
+                }
+                Log.i(
+                    "G1BLEManager",
+                    "Bond recovery succeeded for $deviceName (stage=$stage); disconnecting for retry"
+                )
+                runCatching { disconnect().suspend() }
+                    .onFailure {
+                        Log.w(
+                            "G1BLEManager",
+                            "disconnect during bond recovery failed for $deviceName (stage=$stage)",
+                            it
+                        )
+                    }
+            } finally {
+                bondRecoveryInProgress.set(false)
+            }
+        }
     }
 
     private fun logFirmwareServices(gatt: BluetoothGatt) {

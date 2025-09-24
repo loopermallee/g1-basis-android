@@ -3,12 +3,10 @@ package io.texne.g1.hub.ble
 import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanRecord
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -20,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
+import io.texne.g1.basis.core.ensureBond
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -349,172 +348,91 @@ class G1Connector @Inject constructor(
         if (!ensurePermission(Manifest.permission.BLUETOOTH_CONNECT, "CONNECT")) {
             return false
         }
-        if (!ensureBond(device)) {
+        if (!ensureBond(context, device, BOND_TIMEOUT_MS, TAG)) {
             Log.w(TAG, "Unable to bond with ${device.address}")
             return false
         }
+
         val manager = G1BLEManager.getOrCreate(device, context)
-        val latch = CountDownLatch(1)
-        val success = AtomicBoolean(false)
+        var allowBondRecovery = true
 
-        val request = try {
-            manager.connectIfNeeded(device)
-        } catch (error: Throwable) {
-            Log.w(TAG, "connectIfNeeded error", error)
-            null
-        }
+        while (true) {
+            val latch = CountDownLatch(1)
+            val success = AtomicBoolean(false)
+            var failureStatus: Int? = null
 
-        if (request == null) {
-            success.set(true)
-            manager.currentGatt()?.let { G1BLEManager.attach(it) }
-        } else {
-            request
-                .useAutoConnect(false)
-                .timeout(CONNECT_TIMEOUT_MS.toLong())
-                .fail { _, status ->
-                    Log.w(TAG, "GATT connect failed for ${device.address} (status=$status)")
-                    success.set(false)
-                    latch.countDown()
-                }
-                .invalid {
-                    Log.w(TAG, "GATT connect request invalid for ${device.address}")
-                    success.set(false)
-                    latch.countDown()
-                }
-                .done {
-                    manager.currentGatt()?.let { G1BLEManager.attach(it) }
-                    success.set(true)
-                    latch.countDown()
-                }
-                .enqueue()
-
-            val awaited = latch.await(CONNECT_TIMEOUT_MS + 2000L, TimeUnit.MILLISECONDS)
-            if (!awaited) {
-                Log.w(TAG, "connectGattOnce timeout for ${device.address}")
-                success.set(false)
-                runCatching { request.cancelPendingConnection() }
+            val request = try {
+                manager.connectIfNeeded(device)
+            } catch (error: Throwable) {
+                Log.w(TAG, "connectIfNeeded error", error)
+                null
             }
-        }
 
-        val connected = success.get()
-        if (connected) {
-            rememberSuccessfulConnection(device)
-        }
-        return connected
-    }
+            if (request == null) {
+                success.set(true)
+                manager.currentGatt()?.let { G1BLEManager.attach(it) }
+            } else {
+                request
+                    .useAutoConnect(false)
+                    .timeout(CONNECT_TIMEOUT_MS.toLong())
+                    .fail { _, status ->
+                        failureStatus = status
+                        Log.w(TAG, "GATT connect failed for ${device.address} (status=$status)")
+                        success.set(false)
+                        latch.countDown()
+                    }
+                    .invalid {
+                        Log.w(TAG, "GATT connect request invalid for ${device.address}")
+                        success.set(false)
+                        latch.countDown()
+                    }
+                    .done {
+                        manager.currentGatt()?.let { G1BLEManager.attach(it) }
+                        success.set(true)
+                        latch.countDown()
+                    }
+                    .enqueue()
 
-    @SuppressLint("MissingPermission", "UnspecifiedRegisterReceiverFlag")
-    private fun ensureBond(device: BluetoothDevice): Boolean {
-        if (device.bondState == BluetoothDevice.BOND_BONDED) {
-            return true
-        }
+                val awaited = latch.await(CONNECT_TIMEOUT_MS + 2000L, TimeUnit.MILLISECONDS)
+                if (!awaited) {
+                    Log.w(TAG, "connectGattOnce timeout for ${device.address}")
+                    success.set(false)
+                    runCatching { request.cancelPendingConnection() }
+                }
+            }
 
-        val latch = CountDownLatch(1)
-        val completed = AtomicBoolean(false)
-        val bonded = AtomicBoolean(false)
+            val connected = success.get()
+            if (connected) {
+                rememberSuccessfulConnection(device)
+                return true
+            }
 
-        val receiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                intent ?: return
-                val target = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+            val status = failureStatus
+            if (allowBondRecovery && status.isInsufficientAuthentication()) {
+                allowBondRecovery = false
+                Log.i(TAG, "Recovering from insufficient authentication for ${device.address} (status=$status)")
+                val bonded = ensureBond(context, device, BOND_TIMEOUT_MS, TAG)
+                if (bonded) {
+                    runCatching { manager.disconnect().enqueue() }
+                        .onFailure {
+                            Log.w(TAG, "disconnect after auth failure error for ${device.address}", it)
+                        }
+                    continue
                 } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableExtra<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE)
-                } ?: return
-                if (target.address != device.address) {
-                    return
-                }
-
-                val state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR)
-                val previous = intent.getIntExtra(BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE, BluetoothDevice.ERROR)
-                Log.i(TAG, "Bond state change for ${device.address}: state=$state previous=$previous")
-                when (state) {
-                    BluetoothDevice.BOND_BONDED -> {
-                        bonded.set(true)
-                        if (completed.compareAndSet(false, true)) {
-                            latch.countDown()
-                        }
-                    }
-                    BluetoothDevice.BOND_NONE -> {
-                        if (completed.compareAndSet(false, true)) {
-                            latch.countDown()
-                        }
-                    }
+                    Log.w(TAG, "Bond recovery failed for ${device.address}")
                 }
             }
-        }
 
-        val filter = IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            context.registerReceiver(receiver, filter)
-        }
-
-        return try {
-            val initialState = device.bondState
-            if (initialState == BluetoothDevice.BOND_BONDED) {
-                bonded.set(true)
-                return true
-            }
-
-            val shouldInitiateBond = initialState != BluetoothDevice.BOND_BONDING
-            if (shouldInitiateBond && !startBond(device)) {
-                return false
-            }
-
-            if (device.bondState == BluetoothDevice.BOND_BONDED) {
-                bonded.set(true)
-                return true
-            }
-
-            val awaited = latch.await(BOND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            if (!awaited) {
-                Log.w(TAG, "Bond timeout for ${device.address}")
-            }
-            bonded.get() || device.bondState == BluetoothDevice.BOND_BONDED
-        } finally {
-            runCatching { context.unregisterReceiver(receiver) }
+            return false
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun startBond(device: BluetoothDevice): Boolean {
-        val insecureStarted = try {
-            val method = device.javaClass.getMethod("createBondInsecure")
-            val result = method.invoke(device)
-            val started = (result as? Boolean) == true
-            if (started) {
-                Log.i(TAG, "createBondInsecure() initiated for ${device.address}")
-            } else {
-                Log.i(TAG, "createBondInsecure() returned false for ${device.address}")
-            }
-            started
-        } catch (error: NoSuchMethodException) {
-            Log.i(TAG, "createBondInsecure unavailable for ${device.address}")
-            false
-        } catch (error: Throwable) {
-            Log.w(TAG, "createBondInsecure error for ${device.address}", error)
-            false
+    private fun Int?.isInsufficientAuthentication(): Boolean {
+        if (this == null) {
+            return false
         }
-        if (insecureStarted) {
-            return true
-        }
-
-        return try {
-            val started = device.createBond()
-            if (!started) {
-                Log.w(TAG, "createBond() returned false for ${device.address}")
-            } else {
-                Log.i(TAG, "createBond() initiated for ${device.address}")
-            }
-            started
-        } catch (error: Throwable) {
-            Log.w(TAG, "createBond() error for ${device.address}", error)
-            false
-        }
+        return this == BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION ||
+            this == BluetoothGatt.GATT_INSUFFICIENT_AUTHORIZATION
     }
 
     private fun ensureScanPermissions(): ScanPermission {
