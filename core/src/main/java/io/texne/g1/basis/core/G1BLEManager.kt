@@ -110,33 +110,23 @@ public class G1BLEManager private constructor(
             }
             .enqueue()
         setConnectionObserver(object : ConnectionObserver {
-            override fun onDeviceConnecting(device: BluetoothDevice) {
-                writableConnectionState.value = G1.ConnectionState.CONNECTING
-            }
+            override fun onDeviceConnecting(device: BluetoothDevice) {}
 
             override fun onDeviceConnected(device: BluetoothDevice) {
-                writableConnectionState.value = G1.ConnectionState.CONNECTED
-                // Request MTU here (185–251)
+                // Request MTU (185–251)
                 // Enable notifications on NUS RX
-                // Start 0x25 heartbeat scheduler
+                // Start heartbeat (0x25) scheduler
             }
 
             override fun onDeviceReady(device: BluetoothDevice) {
                 // Safe to start GATT operations
             }
 
-            override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {
-                writableConnectionState.value = G1.ConnectionState.ERROR
-            }
+            override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {}
 
-            override fun onDeviceDisconnecting(device: BluetoothDevice) {
-                writableConnectionState.value = G1.ConnectionState.DISCONNECTING
-            }
+            override fun onDeviceDisconnecting(device: BluetoothDevice) {}
 
-            override fun onDeviceDisconnected(device: BluetoothDevice, reason: Int) {
-                writableConnectionState.value = G1.ConnectionState.DISCONNECTED
-                stopHeartbeat()
-            }
+            override fun onDeviceDisconnected(device: BluetoothDevice, reason: Int) {}
         })
         val notificationCharacteristic = readCharacteristic
         if (notificationCharacteristic == null) {
