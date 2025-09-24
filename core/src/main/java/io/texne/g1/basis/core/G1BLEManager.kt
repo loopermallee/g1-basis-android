@@ -100,7 +100,15 @@ public class G1BLEManager private constructor(
     private var heartbeatJob: Job? = null
 
     override fun initialize() {
-        requestMtu(MAX_MTU).enqueue()
+        BleLogger.info("G1BLEManager", "Requesting MTU $MAX_MTU for $deviceName")
+        requestMtu(MAX_MTU)
+            .done { _, mtu ->
+                BleLogger.info("G1BLEManager", "MTU negotiated for $deviceName (mtu=$mtu)")
+            }
+            .fail { _, status ->
+                BleLogger.warn("G1BLEManager", "MTU request failed for $deviceName (status=$status)")
+            }
+            .enqueue()
         setConnectionObserver(object: ConnectionObserver {
             override fun onDeviceConnecting(device: BluetoothDevice) {
                 writableConnectionState.value = G1.ConnectionState.CONNECTING
@@ -135,7 +143,7 @@ public class G1BLEManager private constructor(
         })
         val notificationCharacteristic = readCharacteristic
         if (notificationCharacteristic == null) {
-            Log.w("G1BLEManager", "Read characteristic unavailable; skipping notification subscription")
+            BleLogger.warn("G1BLEManager", "Read characteristic unavailable; skipping notification subscription")
             return
         }
 
@@ -153,13 +161,11 @@ public class G1BLEManager private constructor(
         }
         enableNotifications(notificationCharacteristic)
             .done {
+                BleLogger.info("G1BLEManager", "Notifications enabled for $deviceName; scheduling heartbeat")
                 startHeartbeat()
             }
             .fail { device, status ->
-                Log.e(
-                    "G1BLEManager",
-                    "Failed to enable notifications for $deviceName (status: $status)"
-                )
+                BleLogger.error("G1BLEManager", "Failed to enable notifications for $deviceName (status: $status)")
                 scheduleBondRecovery(device, status, "enableNotifications")
             }
             .enqueue()
@@ -176,7 +182,7 @@ public class G1BLEManager private constructor(
     fun writeTx(data: ByteArray): Boolean {
         val characteristic = writeCharacteristic
         if (characteristic == null) {
-            Log.e("G1BLEManager", "UART write characteristic missing for $deviceName")
+            BleLogger.error("G1BLEManager", "UART write characteristic missing for $deviceName")
             return false
         }
 
@@ -195,7 +201,7 @@ public class G1BLEManager private constructor(
                 true
             } catch (e: Exception) {
                 val attemptNumber = 3 - attemptsRemaining
-                Log.e(
+                BleLogger.error(
                     "G1BLEManager",
                     "Failed to send packet on attempt $attemptNumber (status=${writableConnectionState.value}): ${e.message}",
                     e
@@ -215,7 +221,7 @@ public class G1BLEManager private constructor(
         return Log.VERBOSE
     }
     override fun log(priority: Int, message: String) {
-        Log.println(priority, "G1BLEManager", message)
+        BleLogger.log(priority, "G1BLEManager", message)
     }
 
     //
@@ -227,20 +233,20 @@ public class G1BLEManager private constructor(
             val read = service.getCharacteristic(UUID.fromString(UART_READ_CHARACTERISTIC_UUID))
 
             if(write == null) {
-                Log.e("G1BLEManager", "UART write characteristic missing for $deviceName")
+                BleLogger.error("G1BLEManager", "UART write characteristic missing for $deviceName")
                 return false
             }
             if(!write.supportsWriting()) {
-                Log.e("G1BLEManager", "UART write characteristic missing write properties for $deviceName")
+                BleLogger.error("G1BLEManager", "UART write characteristic missing write properties for $deviceName")
                 return false
             }
 
             if(read == null) {
-                Log.e("G1BLEManager", "UART read characteristic missing for $deviceName")
+                BleLogger.error("G1BLEManager", "UART read characteristic missing for $deviceName")
                 return false
             }
             if(!read.supportsNotifications()) {
-                Log.e("G1BLEManager", "UART read characteristic missing notify/indicate properties for $deviceName")
+                BleLogger.error("G1BLEManager", "UART read characteristic missing notify/indicate properties for $deviceName")
                 return false
             }
 
@@ -250,9 +256,10 @@ public class G1BLEManager private constructor(
             gatt.setCharacteristicNotification(read, true)
             attach(gatt)
             logFirmwareServices(gatt)
+            BleLogger.info("G1BLEManager", "UART service ready for $deviceName")
             return true
         }
-        Log.e("G1BLEManager", "UART service missing for $deviceName")
+        BleLogger.error("G1BLEManager", "UART service missing for $deviceName")
         return false
     }
 
@@ -267,11 +274,16 @@ public class G1BLEManager private constructor(
     fun connectIfNeeded(device: BluetoothDevice): ConnectRequest? {
         val address = device.address
         if (!address.isNullOrEmpty()) {
-            consumePendingGatt(address)
+            val pending = consumePendingGatt(address)
+            if (pending != null) {
+                BleLogger.info("G1BLEManager", "Consumed pending GATT for $deviceName ($address)")
+            }
         }
         if (isConnected) {
+            BleLogger.debug("G1BLEManager", "Already connected to $deviceName; reusing session")
             return null
         }
+        BleLogger.info("G1BLEManager", "Creating connect request for $deviceName")
         return connect(device)
     }
 
@@ -282,10 +294,10 @@ public class G1BLEManager private constructor(
         val read = readCharacteristic
         if (read != null) {
             runCatching { disableNotifications(read).suspend() }
-                .onFailure { Log.w("G1BLEManager", "disableNotifications failed for $deviceName", it) }
+                .onFailure { BleLogger.warn("G1BLEManager", "disableNotifications failed for $deviceName", it) }
         }
         runCatching { disconnect().suspend() }
-            .onFailure { Log.w("G1BLEManager", "disconnect failed for $deviceName", it) }
+            .onFailure { BleLogger.warn("G1BLEManager", "disconnect failed for $deviceName", it) }
         close()
         scopeJob.cancel()
         remove(deviceAddress)
@@ -293,19 +305,24 @@ public class G1BLEManager private constructor(
 
     private fun startHeartbeat() {
         if (heartbeatJob?.isActive == true) {
+            BleLogger.debug("G1BLEManager", "Heartbeat already scheduled for $deviceName")
             return
         }
+        BleLogger.info("G1BLEManager", "Scheduling heartbeat every ${HEARTBEAT_INTERVAL_MS}ms for $deviceName")
         heartbeatJob = internalScope.launch {
             while (isActive) {
                 delay(HEARTBEAT_INTERVAL_MS)
                 if (!writeTx(byteArrayOf(0x25))) {
-                    Log.w("G1BLEManager", "Failed to send heartbeat for $deviceName")
+                    BleLogger.warn("G1BLEManager", "Failed to send heartbeat for $deviceName")
                 }
             }
         }
     }
 
     private fun stopHeartbeat() {
+        if (heartbeatJob != null) {
+            BleLogger.info("G1BLEManager", "Stopping heartbeat for $deviceName")
+        }
         heartbeatJob?.cancel()
         heartbeatJob = null
     }
@@ -320,14 +337,14 @@ public class G1BLEManager private constructor(
         }
         val target = device ?: deviceGatt?.device
         if (target == null) {
-            Log.w(
+            BleLogger.warn(
                 "G1BLEManager",
                 "Bond recovery requested but device unavailable for $deviceName (stage=$stage)"
             )
             return
         }
         if (!bondRecoveryInProgress.compareAndSet(false, true)) {
-            Log.d(
+            BleLogger.debug(
                 "G1BLEManager",
                 "Bond recovery already in progress for $deviceName (stage=$stage)"
             )
@@ -335,25 +352,25 @@ public class G1BLEManager private constructor(
         }
         internalScope.launch {
             try {
-                Log.i(
+                BleLogger.info(
                     "G1BLEManager",
                     "Attempting bond recovery for $deviceName (stage=$stage, status=$status)"
                 )
                 val bonded = ensureBond(appContext, target, DEFAULT_BOND_TIMEOUT_MS, "G1BLEManager")
                 if (!bonded) {
-                    Log.w(
+                    BleLogger.warn(
                         "G1BLEManager",
                         "Bond recovery failed for $deviceName (stage=$stage)"
                     )
                     return@launch
                 }
-                Log.i(
+                BleLogger.info(
                     "G1BLEManager",
                     "Bond recovery succeeded for $deviceName (stage=$stage); disconnecting for retry"
                 )
                 runCatching { disconnect().suspend() }
                     .onFailure {
-                        Log.w(
+                        BleLogger.warn(
                             "G1BLEManager",
                             "disconnect during bond recovery failed for $deviceName (stage=$stage)",
                             it
@@ -368,7 +385,7 @@ public class G1BLEManager private constructor(
     private fun logFirmwareServices(gatt: BluetoothGatt) {
         val hasSmp = gatt.getService(UUID.fromString(SMP_SERVICE_UUID)) != null
         val hasDfu = gatt.getService(UUID.fromString(DFU_SERVICE_UUID)) != null
-        Log.d(
+        BleLogger.debug(
             "G1BLEManager",
             "Firmware services detected for $deviceName - SMP: $hasSmp, DFU: $hasDfu"
         )

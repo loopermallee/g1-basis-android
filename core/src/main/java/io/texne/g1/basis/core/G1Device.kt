@@ -3,7 +3,6 @@ package io.texne.g1.basis.core
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.content.Context
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -71,7 +70,7 @@ internal class G1Device(
             managerObserversRegistered = true
             scope.launch {
                 manager.connectionState.collect {
-                    Log.d("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
+                    BleLogger.debug("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
                     writableState.value = state.value.copy(
                         connectionState = it
                     )
@@ -95,7 +94,7 @@ internal class G1Device(
                             writableGestures.emit(gesture)
                         }
                         is DashboardStatusPacket -> {
-                            Log.d("G1Device", "DASHBOARD_STATUS ${packet}")
+                            BleLogger.debug("G1Device", "DASHBOARD_STATUS ${packet}")
                             val status = DashboardStatus(
                                 countdownTicks = packet.countdownTicks,
                                 currentPage = packet.currentPage,
@@ -125,6 +124,7 @@ internal class G1Device(
         try {
             val request = manager.connectIfNeeded(device)
             if (request != null) {
+                BleLogger.info("G1Device", "Connect parameters for ${device.address}: autoConnect=false timeout=30000 retry=3")
                 request
                     // Deterministic first-time connection; autoConnect(true) can be used by
                     // background reconnection flows when an active session already exists.
@@ -133,13 +133,16 @@ internal class G1Device(
                     .timeout(30_000)
                     .suspend()
                 manager.currentGatt()?.let { G1BLEManager.attach(it) }
+            } else {
+                BleLogger.info("G1Device", "Existing GATT reused for ${device.address}")
             }
             startPeriodicBatteryCheck()
             return true
         } catch (e: Throwable) {
-            Log.e(
-                "G1BLEManager",
-                "ERROR: Device connection error ${e}"
+            BleLogger.error(
+                "G1Device",
+                "Device connection error for ${device.address}",
+                e
             )
             return false
         }
@@ -159,7 +162,7 @@ internal class G1Device(
             )
             successfullySent = manager.send(nextRequest.outgoing)
             if(!successfullySent) {
-                Log.e(
+                BleLogger.error(
                     "G1Device",
                     "Failed to send request ${nextRequest.outgoing.type}; invoking failure callback"
                 )
@@ -221,7 +224,7 @@ internal class G1Device(
 
     private fun sendBatteryCheck() {
         if(!manager.send(BatteryLevelRequestPacket())) {
-            Log.e(
+            BleLogger.error(
                 "G1Device",
                 "Heartbeat battery check failed to send"
             )
@@ -230,7 +233,7 @@ internal class G1Device(
         // if current request has expired, return failure and advance queue
         val request = currentRequest
         if(request != null && request.expires < Date().time) {
-            Log.w(
+            BleLogger.warn(
                 "G1Device",
                 "Request ${request.outgoing.type} expired before response; advancing queue"
             )
