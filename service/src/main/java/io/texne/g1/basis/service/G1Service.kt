@@ -541,17 +541,28 @@ class G1Service: Service() {
                 getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(notificationChannel)
 
-            val notification = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
+            val launchIntent = packageManager
+                .getLaunchIntentForPackage(packageName)
+                ?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+
+            val notificationBuilder = Notification.Builder(this, G1_SERVICE_NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_service_foreground)
                 .setContentTitle(getString(R.string.notification_channel_name))
                 .setContentText(getString(R.string.notification_text))
-                .setContentIntent(
-                    PendingIntent.getActivity(
-                        this, 0, Intent(this, G1Service::class.java),
-                        PendingIntent.FLAG_IMMUTABLE
-                    )
+
+            launchIntent?.let { intent ->
+                val contentIntent = PendingIntent.getActivity(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 )
-                .build()
+                notificationBuilder.setContentIntent(contentIntent)
+            }
+
+            val notification = notificationBuilder.build()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(
