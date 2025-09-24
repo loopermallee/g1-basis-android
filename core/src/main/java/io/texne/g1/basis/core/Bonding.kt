@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import android.util.Log
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,7 +21,10 @@ fun ensureBond(
     timeoutMs: Long = DEFAULT_BOND_TIMEOUT_MS,
     logTag: String = DEFAULT_BOND_TAG
 ): Boolean {
-    if (device.bondState == BluetoothDevice.BOND_BONDED) {
+    val initialState = device.bondState
+    BleLogger.info(logTag, "Ensuring bond for ${device.address}: initialState=$initialState")
+    if (initialState == BluetoothDevice.BOND_BONDED) {
+        BleLogger.info(logTag, "Bond already established for ${device.address}")
         return true
     }
 
@@ -48,7 +50,7 @@ fun ensureBond(
                 BluetoothDevice.EXTRA_PREVIOUS_BOND_STATE,
                 BluetoothDevice.ERROR
             )
-            Log.i(logTag, "Bond state change for ${device.address}: state=$state previous=$previous")
+            BleLogger.info(logTag, "Bond state change for ${device.address}: state=$state previous=$previous")
             when (state) {
                 BluetoothDevice.BOND_BONDED -> {
                     bonded.set(true)
@@ -74,27 +76,28 @@ fun ensureBond(
     }
 
     return try {
-        val initialState = device.bondState
-        if (initialState == BluetoothDevice.BOND_BONDED) {
-            bonded.set(true)
-            return true
-        }
-
         val shouldInitiateBond = initialState != BluetoothDevice.BOND_BONDING
+        if (!shouldInitiateBond) {
+            BleLogger.info(logTag, "Bonding already in progress for ${device.address}")
+        }
         if (shouldInitiateBond && !startBond(device, logTag)) {
+            BleLogger.warn(logTag, "Bond initiation skipped for ${device.address}")
             return false
         }
 
         if (device.bondState == BluetoothDevice.BOND_BONDED) {
+            BleLogger.info(logTag, "Bond completed quickly for ${device.address}")
             bonded.set(true)
             return true
         }
 
         val awaited = latch.await(timeoutMs, TimeUnit.MILLISECONDS)
         if (!awaited) {
-            Log.w(logTag, "Bond timeout for ${device.address}")
+            BleLogger.warn(logTag, "Bond timeout for ${device.address}")
         }
-        bonded.get() || device.bondState == BluetoothDevice.BOND_BONDED
+        val success = bonded.get() || device.bondState == BluetoothDevice.BOND_BONDED
+        BleLogger.info(logTag, "Bond result for ${device.address}: success=$success finalState=${device.bondState}")
+        success
     } finally {
         runCatching { context.unregisterReceiver(receiver) }
     }
@@ -107,16 +110,16 @@ private fun startBond(device: BluetoothDevice, logTag: String): Boolean {
         val result = method.invoke(device)
         val started = (result as? Boolean) == true
         if (started) {
-            Log.i(logTag, "createBondInsecure() initiated for ${device.address}")
+            BleLogger.info(logTag, "createBondInsecure() initiated for ${device.address}")
         } else {
-            Log.i(logTag, "createBondInsecure() returned false for ${device.address}")
+            BleLogger.info(logTag, "createBondInsecure() returned false for ${device.address}")
         }
         started
     } catch (error: NoSuchMethodException) {
-        Log.i(logTag, "createBondInsecure unavailable for ${device.address}")
+        BleLogger.info(logTag, "createBondInsecure unavailable for ${device.address}")
         false
     } catch (error: Throwable) {
-        Log.w(logTag, "createBondInsecure error for ${device.address}", error)
+        BleLogger.warn(logTag, "createBondInsecure error for ${device.address}", error)
         false
     }
     if (insecureStarted) {
@@ -126,13 +129,13 @@ private fun startBond(device: BluetoothDevice, logTag: String): Boolean {
     return try {
         val started = device.createBond()
         if (!started) {
-            Log.w(logTag, "createBond() returned false for ${device.address}")
+            BleLogger.warn(logTag, "createBond() returned false for ${device.address}")
         } else {
-            Log.i(logTag, "createBond() initiated for ${device.address}")
+            BleLogger.info(logTag, "createBond() initiated for ${device.address}")
         }
         started
     } catch (error: Throwable) {
-        Log.w(logTag, "createBond() error for ${device.address}", error)
+        BleLogger.warn(logTag, "createBond() error for ${device.address}", error)
         false
     }
 }

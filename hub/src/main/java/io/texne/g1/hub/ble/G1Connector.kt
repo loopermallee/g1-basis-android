@@ -12,12 +12,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelUuid
-import android.util.Log
 import android.util.SparseArray
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceClient
+import io.texne.g1.basis.core.BleLogger
 import io.texne.g1.basis.core.ensureBond
 import java.util.Locale
 import java.util.UUID
@@ -74,14 +74,15 @@ class G1Connector @Inject constructor(
     }
 
     suspend fun connectSmart(): Result = withContext(Dispatchers.IO) {
+        BleLogger.info(TAG, "connectSmart start")
         if (attachToHub()) {
-            Log.i(TAG, "CONNECT_PATH=HUB")
+            BleLogger.info(TAG, "CONNECT_PATH=HUB")
             return@withContext Result.Success
         }
 
         when (val bonded = tryBondedConnectInternal()) {
             BondedResult.Success -> {
-                Log.i(TAG, "CONNECT_PATH=BONDED")
+                BleLogger.info(TAG, "CONNECT_PATH=BONDED")
                 return@withContext Result.Success
             }
             BondedResult.PermissionMissing -> return@withContext Result.PermissionMissing
@@ -90,15 +91,21 @@ class G1Connector @Inject constructor(
 
         return@withContext when (val scan = scanAndConnect()) {
             ScanOutcome.Success -> Result.Success
-            ScanOutcome.PermissionMissing -> Result.PermissionMissing
-            ScanOutcome.NotFound -> Result.NotFound
+            ScanOutcome.PermissionMissing -> {
+                BleLogger.warn(TAG, "connectSmart scan blocked by permissions")
+                Result.PermissionMissing
+            }
+            ScanOutcome.NotFound -> {
+                BleLogger.warn(TAG, "connectSmart scan path not found")
+                Result.NotFound
+            }
         }
     }
 
     suspend fun tryBondedConnect(): Result = withContext(Dispatchers.IO) {
         when (val bonded = tryBondedConnectInternal()) {
             BondedResult.Success -> {
-                Log.i(TAG, "CONNECT_PATH=BONDED")
+                BleLogger.info(TAG, "CONNECT_PATH=BONDED")
                 Result.Success
             }
             BondedResult.PermissionMissing -> Result.PermissionMissing
@@ -112,11 +119,11 @@ class G1Connector @Inject constructor(
             val connected = runCatching { client.listConnectedGlasses() }
                 .getOrDefault(emptyList())
             val success = connected.isNotEmpty()
-            Log.i(TAG, "attachToHub connected=${connected.size}")
+            BleLogger.info(TAG, "attachToHub connected=${connected.size}")
             client.close()
             success
         } catch (error: Throwable) {
-            Log.w(TAG, "attachToHub error", error)
+            BleLogger.warn(TAG, "attachToHub error", error)
             false
         }
     }
@@ -127,7 +134,7 @@ class G1Connector @Inject constructor(
         }
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
         val adapter = manager?.adapter ?: run {
-            Log.w(TAG, "Bluetooth adapter unavailable")
+            BleLogger.warn(TAG, "Bluetooth adapter unavailable")
             return@withContext BondedResult.NoDevices
         }
 
@@ -138,7 +145,7 @@ class G1Connector @Inject constructor(
             if (lastDevice != null) {
                 seenAddresses.add(lastDevice.address)
                 attemptedAddresses.add(lastDevice.address)
-                Log.i(TAG, "Attempt last successful connect to ${lastDevice.address}")
+                BleLogger.info(TAG, "Attempt last successful connect to ${lastDevice.address} reason=LAST_SUCCESS")
                 if (connectGattOnce(lastDevice)) {
                     return@withContext BondedResult.Success
                 }
@@ -151,7 +158,7 @@ class G1Connector @Inject constructor(
         val bonded = try {
             adapter.bondedDevices.orEmpty()
         } catch (error: SecurityException) {
-            Log.w(TAG, "Unable to access bonded devices", error)
+            BleLogger.warn(TAG, "Unable to access bonded devices", error)
             emptySet()
         }
 
@@ -169,13 +176,27 @@ class G1Connector @Inject constructor(
         }
 
         if (candidates.isEmpty() && attemptedAddresses.isEmpty()) {
-            Log.i(TAG, "No bonded Even/G1 devices")
+            BleLogger.info(TAG, "No bonded Even/G1 devices")
             return@withContext BondedResult.NoDevices
         }
 
         candidates.forEach { device ->
             attemptedAddresses.add(device.address)
-            Log.i(TAG, "Attempt bonded connect to ${device.name} / ${device.address}")
+            val normalizedAddress = normalizedAddress(device.address)
+            val reasonParts = mutableListOf<String>()
+            if (matchesEvenName(device.name.orEmpty())) {
+                reasonParts += "NAME"
+            }
+            if (normalizedAddress != null) {
+                if (knownNusAddresses.contains(normalizedAddress)) {
+                    reasonParts += "KNOWN_NUS"
+                }
+                if (knownManufacturerAddresses.contains(normalizedAddress)) {
+                    reasonParts += "KNOWN_MFG"
+                }
+            }
+            val reason = reasonParts.joinToString(separator = "+").ifEmpty { "UNKNOWN" }
+            BleLogger.info(TAG, "Attempt bonded connect to ${device.name} / ${device.address} reason=$reason")
             if (connectGattOnce(device)) {
                 return@withContext BondedResult.Success
             }
@@ -188,14 +209,14 @@ class G1Connector @Inject constructor(
             return ScanOutcome.PermissionMissing
         }
 
-        Log.i(TAG, "Starting broad scan pass")
+        BleLogger.info(TAG, "Starting broad scan pass")
         when (val broad = runScan(emptyList(), BROAD_SCAN_DURATION_MS)) {
             ScanOutcome.Success -> return ScanOutcome.Success
             ScanOutcome.PermissionMissing -> return broad
             ScanOutcome.NotFound -> Unit
         }
 
-        Log.i(TAG, "Broad scan complete, starting filtered pass")
+        BleLogger.info(TAG, "Broad scan complete, starting filtered pass")
         val filter = ScanFilter.Builder()
             .setServiceUuid(ParcelUuid(NUS_UUID))
             .build()
@@ -229,7 +250,7 @@ class G1Connector @Inject constructor(
             }
 
             override fun onScanFailed(errorCode: Int) {
-                Log.w(TAG, "scan failed code=$errorCode")
+                BleLogger.warn(TAG, "scan failed code=$errorCode")
                 if (processed.compareAndSet(false, true)) {
                     result = ScanOutcome.NotFound
                     latch.countDown()
@@ -246,16 +267,49 @@ class G1Connector @Inject constructor(
                 if (!hasNameMatch && !hasNus && !hasManufacturer) {
                     return
                 }
+                val flags = record?.advertiseFlags?.let { value -> String.format("0x%02X", value) } ?: "null"
+                val serviceUuidSummary = record?.serviceUuids?.joinToString(prefix = "[", postfix = "]") { parcel ->
+                    parcel?.uuid?.toString() ?: "null"
+                } ?: "[]"
+                val manufacturerSummary = record?.manufacturerSpecificData?.let { data ->
+                    if (data.size() == 0) {
+                        "[]"
+                    } else {
+                        (0 until data.size()).joinToString(prefix = "[", postfix = "]") { index ->
+                            val id = data.keyAt(index)
+                            val length = data.valueAt(index)?.size ?: 0
+                            String.format("0x%04X(%d)", id, length)
+                        }
+                    }
+                } ?: "[]"
+                val reasonsList = mutableListOf<String>()
+                if (hasNameMatch) {
+                    reasonsList += "NAME"
+                }
+                if (hasNus) {
+                    reasonsList += "NUS"
+                }
+                if (hasManufacturer) {
+                    reasonsList += "MFG"
+                }
+                val reasons = reasonsList.joinToString(separator = "+").ifEmpty { "UNKNOWN" }
+                val rssi = resultItem.rssi
+                BleLogger.info(
+                    TAG,
+                    "SCAN_HIT address=${device.address} name=${advertisedName ?: "unknown"} rssi=$rssi flags=$flags uuids=$serviceUuidSummary manufacturers=$manufacturerSummary reason=$reasons"
+                )
                 rememberEncounteredDevice(device, hasNus, hasManufacturer)
                 if (!processed.compareAndSet(false, true)) {
                     return
                 }
-                val label = advertisedName ?: "unknown"
-                Log.i(TAG, "scan hit ${label} / ${device.address}")
+                BleLogger.info(
+                    TAG,
+                    "SCAN_CHOICE address=${device.address} reason=$reasons autoConnect=false timeout=${CONNECT_TIMEOUT_MS}"
+                )
                 runCatching { scanner.stopScan(this) }
                 handler.removeCallbacks(stopRunnable)
                 result = if (connectGattOnce(device)) {
-                    Log.i(TAG, "CONNECT_PATH=SCAN")
+                    BleLogger.info(TAG, "CONNECT_PATH=SCAN")
                     ScanOutcome.Success
                 } else {
                     ScanOutcome.NotFound
@@ -266,7 +320,7 @@ class G1Connector @Inject constructor(
 
         stopRunnable = Runnable {
             if (processed.compareAndSet(false, true)) {
-                Log.i(TAG, "scan window elapsed")
+                BleLogger.info(TAG, "scan window elapsed")
                 runCatching { scanner.stopScan(callback) }
                 result = ScanOutcome.NotFound
                 latch.countDown()
@@ -281,10 +335,10 @@ class G1Connector @Inject constructor(
             runCatching { scanner.stopScan(callback) }
             result
         } catch (error: SecurityException) {
-            Log.w(TAG, "Unable to start BLE scan", error)
+            BleLogger.warn(TAG, "Unable to start BLE scan", error)
             ScanOutcome.PermissionMissing
         } catch (error: IllegalStateException) {
-            Log.w(TAG, "BLE scanner unavailable", error)
+            BleLogger.warn(TAG, "BLE scanner unavailable", error)
             ScanOutcome.NotFound
         }
     }
@@ -349,7 +403,7 @@ class G1Connector @Inject constructor(
             return false
         }
         if (!ensureBond(context, device, BOND_TIMEOUT_MS, TAG)) {
-            Log.w(TAG, "Unable to bond with ${device.address}")
+            BleLogger.warn(TAG, "Unable to bond with ${device.address}")
             return false
         }
 
@@ -364,25 +418,27 @@ class G1Connector @Inject constructor(
             val request = try {
                 manager.connectIfNeeded(device)
             } catch (error: Throwable) {
-                Log.w(TAG, "connectIfNeeded error", error)
+                BleLogger.warn(TAG, "connectIfNeeded error", error)
                 null
             }
 
             if (request == null) {
+                BleLogger.info(TAG, "Reusing existing GATT for ${device.address}")
                 success.set(true)
                 manager.currentGatt()?.let { G1BLEManager.attach(it) }
             } else {
+                BleLogger.info(TAG, "Issuing connect request for ${device.address} autoConnect=false timeout=${CONNECT_TIMEOUT_MS}")
                 request
                     .useAutoConnect(false)
                     .timeout(CONNECT_TIMEOUT_MS.toLong())
                     .fail { _, status ->
                         failureStatus = status
-                        Log.w(TAG, "GATT connect failed for ${device.address} (status=$status)")
+                        BleLogger.warn(TAG, "GATT connect failed for ${device.address} (status=$status)")
                         success.set(false)
                         latch.countDown()
                     }
                     .invalid {
-                        Log.w(TAG, "GATT connect request invalid for ${device.address}")
+                        BleLogger.warn(TAG, "GATT connect request invalid for ${device.address}")
                         success.set(false)
                         latch.countDown()
                     }
@@ -395,7 +451,7 @@ class G1Connector @Inject constructor(
 
                 val awaited = latch.await(CONNECT_TIMEOUT_MS + 2000L, TimeUnit.MILLISECONDS)
                 if (!awaited) {
-                    Log.w(TAG, "connectGattOnce timeout for ${device.address}")
+                    BleLogger.warn(TAG, "connectGattOnce timeout for ${device.address}")
                     success.set(false)
                     runCatching { request.cancelPendingConnection() }
                 }
@@ -410,19 +466,20 @@ class G1Connector @Inject constructor(
             val status = failureStatus
             if (allowBondRecovery && status.isInsufficientAuthentication()) {
                 allowBondRecovery = false
-                Log.i(TAG, "Recovering from insufficient authentication for ${device.address} (status=$status)")
+                BleLogger.info(TAG, "Recovering from insufficient authentication for ${device.address} (status=$status)")
                 val bonded = ensureBond(context, device, BOND_TIMEOUT_MS, TAG)
                 if (bonded) {
                     runCatching { manager.disconnect().enqueue() }
                         .onFailure {
-                            Log.w(TAG, "disconnect after auth failure error for ${device.address}", it)
+                            BleLogger.warn(TAG, "disconnect after auth failure error for ${device.address}", it)
                         }
                     continue
                 } else {
-                    Log.w(TAG, "Bond recovery failed for ${device.address}")
+                    BleLogger.warn(TAG, "Bond recovery failed for ${device.address}")
                 }
             }
 
+            BleLogger.warn(TAG, "connectGattOnce giving up for ${device.address}")
             return false
         }
     }
@@ -453,11 +510,14 @@ class G1Connector @Inject constructor(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
             (permission == Manifest.permission.BLUETOOTH_CONNECT || permission == Manifest.permission.BLUETOOTH_SCAN)
         ) {
+            BleLogger.info(TAG, "Permission $marker bypassed on legacy API")
             return true
         }
         val granted = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-        if (!granted) {
-            Log.w(TAG, "PERM_MISSING=$marker")
+        if (granted) {
+            BleLogger.info(TAG, "Permission $marker granted")
+        } else {
+            BleLogger.warn(TAG, "Permission $marker missing")
         }
         return granted
     }
@@ -482,6 +542,7 @@ class G1Connector @Inject constructor(
         hasManufacturer: Boolean
     ) {
         val address = normalizedAddress(device.address) ?: return
+        BleLogger.debug(TAG, "Encountered ${device.address} nus=$hasNus manufacturer=$hasManufacturer")
         if (hasNus) {
             updateKnownAddressSet(KEY_KNOWN_NUS_ADDRESSES, address)
         }
@@ -492,6 +553,7 @@ class G1Connector @Inject constructor(
 
     private fun rememberSuccessfulConnection(device: BluetoothDevice) {
         val address = normalizedAddress(device.address) ?: return
+        BleLogger.info(TAG, "Recording successful connection for ${device.address}")
         preferences.edit {
             putString(KEY_LAST_SUCCESSFUL_MAC, address)
         }
