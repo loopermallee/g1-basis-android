@@ -113,13 +113,13 @@ public class G1BLEManager private constructor(
             override fun onDeviceConnecting(device: BluetoothDevice) {}
 
             override fun onDeviceConnected(device: BluetoothDevice) {
-                // Request MTU (185–251)
-                // Enable notifications on NUS RX
-                // Start heartbeat (0x25) scheduler
+                // Request MTU here (e.g. requestMtu(251))
+                // Enable notifications on RX characteristic
+                // Start heartbeat (0x25) every 28–30s
             }
 
             override fun onDeviceReady(device: BluetoothDevice) {
-                // Safe to start GATT operations
+                // GATT fully ready, safe to start I/O
             }
 
             override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {}
