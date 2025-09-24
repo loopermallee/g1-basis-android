@@ -116,6 +116,13 @@ public class G1BLEManager private constructor(
 
             override fun onDeviceConnected(device: BluetoothDevice) {
                 writableConnectionState.value = G1.ConnectionState.CONNECTED
+                // Request MTU here (185–251)
+                // Enable notifications on NUS RX
+                // Start 0x25 heartbeat scheduler
+            }
+
+            override fun onDeviceReady(device: BluetoothDevice) {
+                // Safe to start GATT operations
             }
 
             override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {
