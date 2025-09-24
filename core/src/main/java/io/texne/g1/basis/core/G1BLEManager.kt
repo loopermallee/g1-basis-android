@@ -256,7 +256,7 @@ public class G1BLEManager private constructor(
         writableConnectionState.value = G1.ConnectionState.DISCONNECTED
     }
 
-    internal fun connectIfNeeded(device: BluetoothDevice): ConnectRequest? {
+    fun connectIfNeeded(device: BluetoothDevice): ConnectRequest? {
         val address = device.address
         if (!address.isNullOrEmpty()) {
             consumePendingGatt(address)
@@ -267,7 +267,7 @@ public class G1BLEManager private constructor(
         return connect(device)
     }
 
-    internal fun currentGatt(): BluetoothGatt? = deviceGatt
+    fun currentGatt(): BluetoothGatt? = deviceGatt
 
     suspend fun disconnectAndClose() {
         stopHeartbeat()
