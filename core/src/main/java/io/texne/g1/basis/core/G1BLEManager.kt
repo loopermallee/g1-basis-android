@@ -49,7 +49,7 @@ private fun BluetoothGattCharacteristic.supportsNotifications(): Boolean =
 internal class G1BLEManager private constructor(
     context: Context,
     private val device: BluetoothDevice
-) : BleManager(context.applicationContext) {
+) : BleManager(context) {
     private val deviceName = device.name ?: device.address
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -205,11 +205,13 @@ internal class G1BLEManager private constructor(
             val attempt = 4 - attemptsRemaining
             attemptsRemaining -= 1
             try {
-                writeCharacteristic(
-                    characteristic,
-                    packet.bytes,
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                ).suspend()
+                runBlocking {
+                    writeCharacteristic(
+                        characteristic,
+                        packet.bytes,
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    ).suspend()
+                }
                 return true
             } catch (error: Throwable) {
                 Log.e(
@@ -243,16 +245,16 @@ internal class G1BLEManager private constructor(
         }
     }
 
-    suspend fun disconnect() {
+    suspend fun disconnectAwait() {
         stopHeartbeat()
         try {
-            disconnect().suspend()
+            super.disconnect().suspend()
         } catch (error: Throwable) {
             Log.w(TAG, "disconnect error for $deviceName", error)
         }
     }
 
-    fun close() {
+    override fun close() {
         stopHeartbeat()
         scope.cancel()
         removeFromCaches(device.address)

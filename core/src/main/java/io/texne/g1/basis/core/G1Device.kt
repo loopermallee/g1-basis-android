@@ -139,7 +139,7 @@ internal class G1Device(
 
     suspend fun disconnect() {
         stopHeartbeat()
-        manager.disconnect()
+        manager.disconnectAwait()
     }
 
     private fun advanceQueue() {
