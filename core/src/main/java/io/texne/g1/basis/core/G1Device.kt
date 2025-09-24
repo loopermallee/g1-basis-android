@@ -10,7 +10,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Date
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -63,8 +65,8 @@ internal class G1Device(
     @SuppressLint("MissingPermission")
     suspend fun connect(context: Context, scope: CoroutineScope): Boolean {
         if(this::manager.isInitialized.not()) {
-            manager = G1BLEManager.claim(device)
-                ?: G1BLEManager.create(context, device)
+            val claimed = G1BLEManager.claim(device)
+            manager = claimed ?: G1BLEManager.create(context, device)
             scope.launch {
                 manager.connectionState.collect {
                     Log.d("G1Device", "CONNECTION_STATUS ${device.name ?: device.address} = ${it}")
@@ -118,13 +120,16 @@ internal class G1Device(
                 }
             }
         }
-        val connected = try {
-            manager.ensureConnected(30_000)
-        } catch (error: Throwable) {
-            Log.e("G1BLEManager", "ERROR: Device connection error $error", error)
-            false
+        val ready = when {
+            manager.isReady -> true
+            manager.connectionState.value == G1.ConnectionState.CONNECTING -> awaitReady(CONNECT_TIMEOUT_MS)
+            manager.connectionState.value == G1.ConnectionState.CONNECTED -> true
+            else -> {
+                val connected = manager.connect(CONNECT_TIMEOUT_MS)
+                connected
+            }
         }
-        if (!connected) {
+        if (!ready) {
             Log.e("G1BLEManager", "Failed to establish connection to ${device.address}")
             return false
         }
@@ -229,5 +234,23 @@ internal class G1Device(
     private fun stopHeartbeat() {
         batteryCheckTask?.cancel(true)
         batteryCheckTask = null
+    }
+
+    private suspend fun awaitReady(timeoutMs: Long): Boolean {
+        if (manager.connectionState.value == G1.ConnectionState.CONNECTED) {
+            return true
+        }
+        val terminalState = withTimeoutOrNull(timeoutMs) {
+            manager.connectionState.first { state ->
+                state == G1.ConnectionState.CONNECTED ||
+                    state == G1.ConnectionState.DISCONNECTED ||
+                    state == G1.ConnectionState.ERROR
+            }
+        } ?: return false
+        return terminalState == G1.ConnectionState.CONNECTED
+    }
+
+    companion object {
+        private const val CONNECT_TIMEOUT_MS = 30_000L
     }
 }

@@ -33,6 +33,9 @@ android {
 }
 
 dependencies {
+    // BLE
+    implementation(libs.nordic.ble.ktx)
+    implementation(libs.nordic.ble.common)
     implementation(libs.nordic.scanner)
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
