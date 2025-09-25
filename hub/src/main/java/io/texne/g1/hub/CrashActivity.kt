@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
-import io.texne.g1.hub.ui.theme.G1HubTheme
+import io.texne.g1.hub.ui.theme.EyeOfKilroggTheme
 
 class CrashActivity : ComponentActivity() {
 
@@ -43,7 +43,7 @@ class CrashActivity : ComponentActivity() {
         val threadName = intent.getStringExtra(EXTRA_THREAD_NAME).orEmpty()
 
         setContent {
-            G1HubTheme {
+            EyeOfKilroggTheme {
                 CrashScreen(
                     threadName = threadName,
                     cause = cause,

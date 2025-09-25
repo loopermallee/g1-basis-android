@@ -11,32 +11,56 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = SkyTeal,
+    onPrimary = ShadowInk,
+    primaryContainer = OceanBlue,
+    onPrimaryContainer = MoonlightPearl,
+    secondary = SunlitGold,
+    onSecondary = ShadowInk,
+    secondaryContainer = BurnishedGold,
+    onSecondaryContainer = MoonlightPearl,
+    tertiary = SunlitGold,
+    onTertiary = ShadowInk,
+    tertiaryContainer = OceanBlue,
+    onTertiaryContainer = MoonlightPearl,
+    background = MidnightBlue,
+    onBackground = MoonlightPearl,
+    surface = OceanBlue,
+    onSurface = MoonlightPearl,
+    surfaceVariant = MidnightBlue,
+    onSurfaceVariant = MoonlightPearl,
+    outline = SunlitGold,
+    inversePrimary = MistIvory
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primary = OceanBlue,
+    onPrimary = MoonlightPearl,
+    primaryContainer = SkyTeal,
+    onPrimaryContainer = ShadowInk,
+    secondary = SunlitGold,
+    onSecondary = ShadowInk,
+    secondaryContainer = BurnishedGold,
+    onSecondaryContainer = MoonlightPearl,
+    tertiary = SkyTeal,
+    onTertiary = ShadowInk,
+    tertiaryContainer = SurfaceMist,
+    onTertiaryContainer = OceanBlue,
+    background = MistIvory,
+    onBackground = ShadowInk,
+    surface = SurfaceMist,
+    onSurface = ShadowInk,
+    surfaceVariant = MistIvory,
+    onSurfaceVariant = OceanBlue,
+    outline = BurnishedGold,
+    inversePrimary = SkyTeal
 )
 
 @Composable
-fun G1HubTheme(
+fun EyeOfKilroggTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
