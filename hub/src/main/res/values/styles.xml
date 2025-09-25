@@ -6,4 +6,11 @@
         <item name="android:textColor">@android:color/white</item>
         <item name="cornerRadius">12dp</item>
     </style>
+
+    <style name="Widget.BOF4.CardView" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/bo4_background_light</item>
+        <item name="strokeColor">@color/bo4_accent_gray</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="cardElevation">2dp</item>
+    </style>
 </resources>
