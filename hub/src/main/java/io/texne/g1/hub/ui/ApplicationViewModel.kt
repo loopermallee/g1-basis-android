@@ -1,5 +1,6 @@
 package io.texne.g1.hub.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.util.Log
 
 @HiltViewModel
 class ApplicationViewModel @Inject constructor(
@@ -54,12 +54,12 @@ class ApplicationViewModel @Inject constructor(
         val error: Boolean = false,
         val scanning: Boolean = false,
         val serviceStatus: ServiceStatus = ServiceStatus.READY,
-        val nearbyGlasses: List<GlassesSnapshot>? = null,
+        val glasses: List<GlassesSnapshot>? = null,
         val selectedSection: AppSection = AppSection.GLASSES,
         val retryCountdowns: Map<String, RetryCountdown> = emptyMap(),
         val telemetryEntries: List<TelemetryEntry> = emptyList(),
         val telemetryLogs: List<TelemetryLogEntry> = emptyList(),
-        val statusMessage: String? = null,
+        val status: String? = null,
         val errorMessage: String? = null
     )
 
@@ -108,7 +108,7 @@ class ApplicationViewModel @Inject constructor(
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
     private val retryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    private val statusMessage = MutableStateFlow<String?>(null)
+    private val status = MutableStateFlow<String?>(null)
     private val errorMessage = MutableStateFlow<String?>(null)
 
     private val messages = MutableSharedFlow<UiMessage>(
@@ -133,7 +133,7 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    private val statusAndError = combine(statusMessage, errorMessage) { statusText, errorText ->
+    private val statusAndError = combine(status, errorMessage) { statusText, errorText ->
         statusText to errorText
     }
 
@@ -162,7 +162,7 @@ class ApplicationViewModel @Inject constructor(
             error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
             serviceStatus = serviceState?.status ?: ServiceStatus.READY,
-            nearbyGlasses = if (
+            glasses = if (
                 serviceState == null ||
                 serviceState.status == ServiceStatus.READY ||
                 serviceState.status == ServiceStatus.PERMISSION_REQUIRED
@@ -186,7 +186,7 @@ class ApplicationViewModel @Inject constructor(
                 )
             } ?: emptyList(),
             telemetryLogs = logs,
-            statusMessage = statusText,
+            status = statusText,
             errorMessage = errorText
         )
     }
@@ -552,12 +552,12 @@ class ApplicationViewModel @Inject constructor(
     private fun rssiDescription(rssi: Int?): String = rssi?.let { "$it dBm" } ?: "—"
 
     private fun showStatus(text: String) {
-        statusMessage.value = text
+        status.value = text
         errorMessage.value = null
     }
 
     private fun showConnectionFailure() {
-        statusMessage.value = null
+        status.value = null
         errorMessage.value = FAILURE_MESSAGE
         Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
         notify(UiMessage.Snackbar(FAILURE_MESSAGE))
@@ -568,7 +568,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun showPermissionError() {
-        statusMessage.value = null
+        status.value = null
         errorMessage.value = PERMISSION_MESSAGE
         notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
         logTelemetry(
@@ -578,7 +578,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun clearStatus() {
-        statusMessage.value = null
+        status.value = null
         errorMessage.value = null
     }
 

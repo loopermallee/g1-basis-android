@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -47,9 +48,9 @@ fun ScannerScreen(
     scanning: Boolean,
     error: Boolean,
     serviceStatus: G1ServiceCommon.ServiceStatus,
-    nearbyGlasses: List<GlassesSnapshot>?,
+    glasses: List<GlassesSnapshot>?,
     retryCountdowns: Map<String, ApplicationViewModel.RetryCountdown>,
-    statusMessage: String?,
+    status: String?,
     errorMessage: String?,
     scan: () -> Unit,
     connect: (id: String) -> Unit,
@@ -74,12 +75,12 @@ fun ScannerScreen(
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = if (
-                    nearbyGlasses.isNullOrEmpty()
+                    glasses.isNullOrEmpty()
                 ) Arrangement.Center else Arrangement.spacedBy(32.dp)
             ) {
-                if (!statusMessage.isNullOrEmpty()) {
+                if (!status.isNullOrEmpty()) {
                     item {
-                        StatusMessageCard(statusMessage)
+                        StatusMessageCard(status)
                     }
                 }
                 if (!errorMessage.isNullOrEmpty()) {
@@ -88,16 +89,16 @@ fun ScannerScreen(
                     }
                 }
             when {
-                nearbyGlasses.isNullOrEmpty().not() -> {
-                    items(nearbyGlasses!!.size) { index ->
-                        val glasses = nearbyGlasses[index]
+                glasses.isNullOrEmpty().not() -> {
+                    items(glasses!!.size) { index ->
+                        val snapshot = glasses[index]
                         GlassesItem(
-                            glasses = glasses,
-                            retryCountdown = retryCountdowns[glasses.id],
-                            connect = { connect(glasses.id) },
-                            disconnect = { disconnect(glasses.id) },
-                            cancelRetry = { cancelRetry(glasses.id) },
-                            retryNow = { retryNow(glasses.id) }
+                            glasses = snapshot,
+                            retryCountdown = retryCountdowns[snapshot.id],
+                            connect = { connect(snapshot.id) },
+                            disconnect = { disconnect(snapshot.id) },
+                            cancelRetry = { cancelRetry(snapshot.id) },
+                            retryNow = { retryNow(snapshot.id) }
                         )
                     }
                 }
@@ -124,7 +125,7 @@ fun ScannerScreen(
                     }
                 }
 
-                nearbyGlasses != null -> {
+                glasses != null -> {
                     item {
                         NoDevicesFoundCard(onBondedConnect)
                     }
