@@ -11,14 +11,13 @@ object PermissionHelper {
 
     fun requiredPermissions(): Array<String> {
         val permissions = mutableListOf<String>()
+        permissions += Manifest.permission.ACCESS_FINE_LOCATION
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             permissions += Manifest.permission.BLUETOOTH_CONNECT
             permissions += Manifest.permission.BLUETOOTH_SCAN
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 permissions += Manifest.permission.POST_NOTIFICATIONS
             }
-        } else {
-            permissions += Manifest.permission.ACCESS_FINE_LOCATION
         }
         return permissions.toTypedArray()
     }
