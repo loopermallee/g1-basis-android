@@ -100,23 +100,20 @@ class MainActivity : ComponentActivity() {
             runWithPermissions { viewModel.tryBondedConnect() }
         }
 
-        viewModel.glasses.observe(this@MainActivity) { name ->
-            val label = if (name.isBlank()) {
-                getString(R.string.live_data_glasses_unknown)
-            } else {
-                getString(R.string.live_data_glasses_label, name)
-            }
-            binding.textLiveGlasses.text = label
+        val glassesLabel = if (viewModel.glasses.isBlank()) {
+            getString(R.string.live_data_glasses_unknown)
+        } else {
+            getString(R.string.live_data_glasses_label, viewModel.glasses)
         }
+        binding.textLiveGlasses.text = glassesLabel
 
-        viewModel.status.observe(this@MainActivity) { statusText ->
-            val label = if (statusText.isBlank()) {
-                getString(R.string.live_data_status_unknown)
-            } else {
-                getString(R.string.live_data_status_label, statusText)
-            }
-            binding.textLiveStatus.text = label
+        val statusValue = viewModel.status
+        val statusLabel = if (statusValue.isBlank() || statusValue == "unknown") {
+            getString(R.string.live_data_status_unknown)
+        } else {
+            getString(R.string.live_data_status_label, statusValue)
         }
+        binding.textLiveStatus.text = statusLabel
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

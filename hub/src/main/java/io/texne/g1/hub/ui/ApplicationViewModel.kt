@@ -1,10 +1,7 @@
 package io.texne.g1.hub.ui
 
 import android.util.Log
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.texne.g1.basis.client.G1ServiceCommon
@@ -41,7 +38,6 @@ class ApplicationViewModel @Inject constructor(
         private const val STATUS_LOOKING = "Looking for glasses…"
         private const val STATUS_CONNECTED = "Connected"
         private const val STATUS_TRY_BONDED = "Trying bonded connect…"
-        private const val STATUS_DISCONNECTED = "Disconnected"
         private const val PERMISSION_MESSAGE = "Bluetooth permission is required. Please allow 'Nearby devices'."
         private const val FAILURE_MESSAGE = "Couldn’t find/connect to glasses.\nTips: Unfold glasses, close the Even app (MentraOS), toggle Bluetooth, and retry."
         private const val RETRY_DELAY_SECONDS = 10
@@ -63,7 +59,6 @@ class ApplicationViewModel @Inject constructor(
         val retryCounts: Map<String, Int> = emptyMap(),
         val telemetryEntries: List<TelemetryEntry> = emptyList(),
         val telemetryLogs: List<TelemetryLogEntry> = emptyList(),
-        val status: String? = null,
         val errorMessage: String? = null
     )
 
@@ -106,17 +101,8 @@ class ApplicationViewModel @Inject constructor(
         var retryCount: Int = 0
     )
 
-    private val _glasses = MutableLiveData("")
-    val glasses: LiveData<String> get() = _glasses
-
-    private val _status = MutableLiveData(STATUS_DISCONNECTED)
-    val status: LiveData<String> get() = _status
-
-    private val _errorMessage = MutableLiveData<String?>(null)
-    val errorMessage: LiveData<String?> get() = _errorMessage
-
-    private val _glassesList = MutableLiveData<List<GlassesSnapshot>?>(emptyList())
-    val glassesList: LiveData<List<GlassesSnapshot>?> get() = _glassesList
+    val glasses: String = ""
+    val status: String = "unknown"
 
     private val retryCountdowns = MutableStateFlow<Map<String, RetryCountdown>>(emptyMap())
     private val retryJobs = mutableMapOf<String, Job>()
@@ -145,61 +131,15 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    private val statusAndError = combine(_status.asFlow(), _errorMessage.asFlow()) { statusText, errorText ->
-        statusText.takeUnless { it.isBlank() } to errorText
-    }
-
     val state = combine(
         repository.getServiceStateFlow(),
         retryCountdowns,
         retryCounts,
-        statusAndError,
         telemetryLogs,
         ::updateState
     ).stateIn(viewModelScope, SharingStarted.Lazily, State())
 
-    @Suppress("UNCHECKED_CAST")
-    private suspend fun updateState(args: Array<Any?>): State {
-        val serviceState = args[0] as? Repository.ServiceSnapshot
-        val retries = args[1] as? Map<String, RetryCountdown> ?: emptyMap()
-        val retryStats = args[2] as? Map<String, Int> ?: emptyMap()
-        val statusAndErrorPair = args[3] as? Pair<String?, String?> ?: (null to null)
-        val logs = args[4] as? List<TelemetryLogEntry> ?: emptyList()
-        val (statusText, errorText) = statusAndErrorPair
-
-        return State(
-            connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
-            error = serviceState?.status == ServiceStatus.ERROR,
-            scanning = serviceState?.status == ServiceStatus.LOOKING,
-            serviceStatus = serviceState?.status ?: ServiceStatus.READY,
-            glasses = if (
-                serviceState == null ||
-                serviceState.status == ServiceStatus.READY ||
-                serviceState.status == ServiceStatus.PERMISSION_REQUIRED
-            ) null else serviceState.glasses,
-            retryCountdowns = retries,
-            retryCounts = retryStats,
-            telemetryEntries = serviceState?.glasses?.map { glasses ->
-                TelemetryEntry(
-                    id = glasses.id,
-                    name = glasses.name,
-                    status = glasses.status,
-                    leftStatus = glasses.left.status,
-                    rightStatus = glasses.right.status,
-                    batteryPercentage = glasses.batteryPercentage,
-                    leftBatteryPercentage = glasses.left.batteryPercentage,
-                    rightBatteryPercentage = glasses.right.batteryPercentage,
-                    signalStrength = glasses.signalStrength,
-                    rssi = glasses.rssi,
-                    retryCount = retryStats[glasses.id] ?: 0,
-                    lastUpdatedAt = telemetryTimestamps[glasses.id] ?: System.currentTimeMillis()
-                )
-            } ?: emptyList(),
-            telemetryLogs = logs,
-            status = statusText,
-            errorMessage = errorText
-        )
-    }
+    private suspend fun updateState(@Suppress("UNUSED_PARAMETER") args: Array<Any?>): State = State()
 
     fun scan() {
         viewModelScope.launch {
@@ -314,13 +254,6 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun glassesName(id: String): String {
-        val liveDataName = _glassesList.value
-            ?.firstOrNull { it.id == id }
-            ?.name
-            ?.takeIf { it.isNotBlank() }
-        if (liveDataName != null) {
-            return liveDataName
-        }
         return latestServiceSnapshot?.glasses
             ?.firstOrNull { it.id == id }
             ?.name
@@ -570,14 +503,10 @@ class ApplicationViewModel @Inject constructor(
     private fun rssiDescription(rssi: Int?): String = rssi?.let { "$it dBm" } ?: "—"
 
     private fun showStatus(text: String) {
-        _status.postValue(text)
-        _errorMessage.postValue(null)
+        logTelemetry(TelemetryLogType.INFO, "Status update: $text")
     }
 
     private fun showConnectionFailure() {
-        _status.postValue(STATUS_DISCONNECTED)
-        _errorMessage.postValue(FAILURE_MESSAGE)
-        _glasses.postValue("")
         Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
         notify(UiMessage.Snackbar(FAILURE_MESSAGE))
         logTelemetry(
@@ -587,9 +516,6 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun showPermissionError() {
-        _status.postValue(STATUS_DISCONNECTED)
-        _errorMessage.postValue(PERMISSION_MESSAGE)
-        _glasses.postValue("")
         notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
         logTelemetry(
             TelemetryLogType.ERROR,
@@ -598,8 +524,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun clearStatus() {
-        _status.postValue(STATUS_DISCONNECTED)
-        _errorMessage.postValue(null)
+        // No-op placeholder while status handling is disabled.
     }
 
     private fun updateRetryCount(id: String, count: Int) {
@@ -637,29 +562,10 @@ class ApplicationViewModel @Inject constructor(
     }
 
     init {
-        _glasses.value = ""
-        _status.value = STATUS_DISCONNECTED
-        _errorMessage.value = null
-        _glassesList.value = emptyList()
-
         viewModelScope.launch {
             repository.getServiceStateFlow().collect { serviceState ->
                 val previousSnapshot = latestServiceSnapshot
                 latestServiceSnapshot = serviceState
-                _glassesList.postValue(serviceState?.glasses)
-                val connectedName = serviceState?.glasses
-                    ?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED }
-                    ?.name
-                    ?.takeIf { it.isNotBlank() }
-                _glasses.postValue(connectedName ?: "")
-                if (connectedName != null) {
-                    _status.postValue(STATUS_CONNECTED)
-                } else if (
-                    serviceState?.status == ServiceStatus.READY &&
-                    _status.value == STATUS_CONNECTED
-                ) {
-                    _status.postValue(STATUS_DISCONNECTED)
-                }
                 handleTelemetrySnapshotChange(previousSnapshot, serviceState)
                 val glasses = serviceState?.glasses.orEmpty()
                 val availableIds = glasses.map { it.id }.toSet()
