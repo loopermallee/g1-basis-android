@@ -65,10 +65,12 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_CODE_BLUETOOTH) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-                repository.bindService()
-            }
+        if (requestCode != REQUEST_CODE_BLUETOOTH) {
+            return
+        }
+
+        if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+            repository.bindService()
         }
     }
 
