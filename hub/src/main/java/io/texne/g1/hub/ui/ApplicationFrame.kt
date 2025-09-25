@@ -120,45 +120,47 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
 
         val connectedGlasses = state.connectedGlasses
 
-        when (selectedSection) {
-            AppSection.GLASSES -> {
-                if (connectedGlasses != null) {
-                    GlassesScreen(
-                        connectedGlasses,
-                        { viewModel.disconnect(connectedGlasses.id) }
-                    )
-                } else {
-                    ScannerScreen(
-                        scanning = state.scanning,
-                        error = state.error,
-                        serviceStatus = state.serviceStatus,
-                        nearbyGlasses = state.nearbyGlasses,
-                        retryCountdowns = state.retryCountdowns,
-                        statusMessage = state.statusMessage,
-                        errorMessage = state.errorMessage,
-                        scan = scanAction,
-                        connect = { viewModel.connect(it) },
-                        disconnect = { viewModel.disconnect(it) },
-                        cancelRetry = { viewModel.cancelAutoRetry(it) },
-                        retryNow = { viewModel.retryNow(it) },
-                        onBondedConnect = bondedConnectAction
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedSection) {
+                AppSection.GLASSES -> {
+                    if (connectedGlasses != null) {
+                        GlassesScreen(
+                            connectedGlasses,
+                            { viewModel.disconnect(connectedGlasses.id) }
+                        )
+                    } else {
+                        ScannerScreen(
+                            scanning = state.scanning,
+                            error = state.error,
+                            serviceStatus = state.serviceStatus,
+                            nearbyGlasses = state.nearbyGlasses,
+                            retryCountdowns = state.retryCountdowns,
+                            statusMessage = state.statusMessage,
+                            errorMessage = state.errorMessage,
+                            scan = scanAction,
+                            connect = { viewModel.connect(it) },
+                            disconnect = { viewModel.disconnect(it) },
+                            cancelRetry = { viewModel.cancelAutoRetry(it) },
+                            retryNow = { viewModel.retryNow(it) },
+                            onBondedConnect = bondedConnectAction
+                        )
+                    }
+                }
+                AppSection.TELEMETRY -> {
+                    TelemetryScreen(
+                        entries = state.telemetryEntries,
+                        onDisconnect = viewModel::disconnect
                     )
                 }
-            }
-            AppSection.TELEMETRY -> {
-                TelemetryScreen(
-                    entries = state.telemetryEntries,
-                    onDisconnect = viewModel::disconnect
-                )
-            }
-            AppSection.ASSISTANT -> {
-                ChatScreen(
-                    connectedGlassesName = connectedGlasses?.name,
-                    onNavigateToSettings = { viewModel.selectSection(AppSection.SETTINGS) }
-                )
-            }
-            AppSection.SETTINGS -> {
-                SettingsScreen()
+                AppSection.ASSISTANT -> {
+                    ChatScreen(
+                        connectedGlassesName = connectedGlasses?.name,
+                        onNavigateToSettings = { viewModel.selectSection(AppSection.SETTINGS) }
+                    )
+                }
+                AppSection.SETTINGS -> {
+                    SettingsScreen(modifier = Modifier.fillMaxSize())
+                }
             }
         }
     }
