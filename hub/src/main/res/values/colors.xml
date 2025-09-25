@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="kilrogg_ocean">#FF1B3A4B</color>
-    <color name="bo4_background_light">#FFF8F1E0</color>
+    <color name="bo4_background_light">#F4E8C1</color>
     <color name="bo4_background_dark">#FF1C1C1A</color>
     <color name="bo4_accent_teal">#FF3C7D7F</color>
     <color name="bo4_accent_gold">#FFC9A646</color>
