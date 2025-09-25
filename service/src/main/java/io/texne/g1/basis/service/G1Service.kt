@@ -565,11 +565,25 @@ class G1Service: Service() {
             val notification = notificationBuilder.build()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    G1_SERVICE_NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-                )
+                val hasConnectedDevicePermission =
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        ContextCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE
+                        ) == PackageManager.PERMISSION_GRANTED
+                    } else {
+                        true
+                    }
+
+                if (hasConnectedDevicePermission) {
+                    startForeground(
+                        G1_SERVICE_NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                    )
+                } else {
+                    startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
+                }
             } else {
                 startForeground(G1_SERVICE_NOTIFICATION_ID, notification)
             }
