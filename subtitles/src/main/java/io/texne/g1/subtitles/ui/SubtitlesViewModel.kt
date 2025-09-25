@@ -24,7 +24,8 @@ class SubtitlesViewModel @Inject constructor(
         val started: Boolean = false,
         val listening: Boolean = false,
         val displayText: List<String> = listOf(),
-        val queuedText: List<String> = listOf()
+        val queuedText: List<String> = listOf(),
+        val errorMessage: String? = null
     )
 
     private val writableState = MutableStateFlow(State())
@@ -37,7 +38,8 @@ class SubtitlesViewModel @Inject constructor(
                     glasses = it.glasses,
                     hubInstalled = it.hubInstalled,
                     started = it.started,
-                    listening = it.listening
+                    listening = it.listening,
+                    errorMessage = it.errorMessage
                 )
             }
         }

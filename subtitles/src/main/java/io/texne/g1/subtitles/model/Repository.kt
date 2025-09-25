@@ -24,7 +24,8 @@ class Repository @Inject constructor(
         val hubInstalled: Boolean = true,
         val glasses: G1ServiceCommon.Glasses? = null,
         val started: Boolean = false,
-        val listening: Boolean = false
+        val listening: Boolean = false,
+        val errorMessage: String? = null
     )
 
     sealed interface Event {
@@ -38,12 +39,18 @@ class Repository @Inject constructor(
     val events = writableEvents.asSharedFlow()
 
     init {
+        val hubInstalled = try {
+            applicationContext.packageManager.getPackageInfo("io.texne.g1.hub", 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            false
+        }
         writableState.value = State(
-            hubInstalled = try {
-                applicationContext.packageManager.getPackageInfo("io.texne.g1.hub", 0)
-                true
-            } catch (e: PackageManager.NameNotFoundException) {
-                false
+            hubInstalled = hubInstalled,
+            errorMessage = if (hubInstalled) {
+                null
+            } else {
+                "Basis Hub is not installed. Install Basis Hub, then reopen the Subtitles app."
             }
         )
     }
@@ -56,7 +63,7 @@ class Repository @Inject constructor(
 
     //
 
-    private lateinit var service: G1ServiceClient
+    private var service: G1ServiceClient? = null
 
     fun initializeSpeechRecognizer(coroutineScope: CoroutineScope) {
         recognizer.create(coroutineScope)
@@ -102,26 +109,47 @@ class Repository @Inject constructor(
     }
 
     fun bindService(coroutineScope: CoroutineScope): Boolean {
-        service = G1ServiceClient.open(applicationContext) ?: return false
+        val client = G1ServiceClient.open(applicationContext) ?: run {
+            writableState.value = state.value.copy(
+                errorMessage = "Unable to connect to Basis Hub service. Open Basis Hub and try again. (Error: service unavailable)"
+            )
+            return false
+        }
+        service = client
+        writableState.value = state.value.copy(errorMessage = null)
         coroutineScope.launch {
-            service.state.collect {
+            client.state.collect {
+                val connectedGlasses = it?.glasses?.filter { it.status == G1ServiceCommon.GlassesStatus.CONNECTED }?.firstOrNull()
                 writableState.value = state.value.copy(
-                    glasses = it?.glasses?.filter { it.status == G1ServiceCommon.GlassesStatus.CONNECTED }?.firstOrNull()
+                    glasses = connectedGlasses,
+                    errorMessage = if (it == null) {
+                        "Lost connection to Basis Hub service. Reopen Basis Hub and relaunch the Subtitles app."
+                    } else {
+                        null
+                    }
                 )
             }
         }
         return true
     }
 
-    fun unbindService() =
-        service.close()
+    fun unbindService() {
+        service?.close()
+        service = null
+    }
 
-    suspend fun displayText(text: List<String>) =
-        service.displayFormattedPage(state.value.glasses!!.id, G1ServiceCommon.FormattedPage(
+    suspend fun displayText(text: List<String>) {
+        val glasses = state.value.glasses ?: return
+        val client = service ?: return
+        client.displayFormattedPage(glasses.id, G1ServiceCommon.FormattedPage(
             lines = text.map { G1ServiceCommon.FormattedLine(text = it, justify = G1ServiceCommon.JustifyLine.LEFT) },
             justify = G1ServiceCommon.JustifyPage.BOTTOM
         ))
+    }
 
-    suspend fun stopDisplaying() =
-        service.stopDisplaying(state.value.glasses!!.id)
+    suspend fun stopDisplaying() {
+        val glasses = state.value.glasses ?: return
+        val client = service ?: return
+        client.stopDisplaying(glasses.id)
+    }
 }

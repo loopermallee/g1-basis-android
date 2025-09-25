@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
@@ -47,6 +48,18 @@ fun SubtitlesScreen(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.spacedBy(32.dp)
     ) {
+        state.errorMessage?.let { message ->
+            SelectionContainer {
+                Text(
+                    text = message,
+                    color = Color(150, 0, 0, 255),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFFFE5E5), RoundedCornerShape(12.dp))
+                        .padding(16.dp)
+                )
+            }
+        }
         Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(2f)
         ) {
