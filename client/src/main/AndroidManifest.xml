@@ -4,4 +4,8 @@
         <package android:name="io.texne.g1.hub" />
     </queries>
     <uses-permission android:name="io.texne.g1.basis.permission.CONNECT_TO_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 </manifest>
