@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">G1 Hub</string>
+    <string name="app_name">Eye of Kilrogg</string>
     <string name="settings_assistant_activation_title">Assistant activation</string>
     <string name="settings_assistant_activation_description">Choose how to open the assistant from your glasses.</string>
     <string name="settings_assistant_activation_option_off">Off</string>
@@ -18,4 +18,7 @@
     <string name="crash_copy_success">Crash details copied</string>
     <string name="crash_copy_failed">Unable to access clipboard</string>
     <string name="crash_unknown">Unknown crash</string>
+    <string name="hub_placeholder_message">
+        The Eye of Kilrogg interface is being refreshed. Bluetooth services stay active while we finish the new experience.
+    </string>
 </resources>

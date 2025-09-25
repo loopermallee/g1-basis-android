@@ -11,32 +11,56 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = TealHighlight,
+    onPrimary = ParchmentLight,
+    primaryContainer = DeepSlate,
+    onPrimaryContainer = ParchmentLight,
+    secondary = MutedGold,
+    onSecondary = NightStone,
+    secondaryContainer = DeepSlate,
+    onSecondaryContainer = MutedGold,
+    tertiary = StoneGray,
+    onTertiary = ParchmentLight,
+    tertiaryContainer = DeepSlate,
+    onTertiaryContainer = MutedGold,
+    background = NightStone,
+    onBackground = EmberGlow,
+    surface = DeepSlate,
+    onSurface = EmberGlow,
+    surfaceVariant = NightStone,
+    onSurfaceVariant = EmberGlow,
+    outline = MutedGold,
+    inversePrimary = StoneGray
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primary = TealHighlight,
+    onPrimary = ParchmentLight,
+    primaryContainer = TealHighlight,
+    onPrimaryContainer = ParchmentLight,
+    secondary = MutedGold,
+    onSecondary = NightStone,
+    secondaryContainer = MutedGold,
+    onSecondaryContainer = NightStone,
+    tertiary = StoneGray,
+    onTertiary = ParchmentLight,
+    tertiaryContainer = StoneGray,
+    onTertiaryContainer = ParchmentLight,
+    background = ParchmentLight,
+    onBackground = StoneGray,
+    surface = ParchmentLight,
+    onSurface = StoneGray,
+    surfaceVariant = EmberGlow,
+    onSurfaceVariant = StoneGray,
+    outline = TealHighlight,
+    inversePrimary = MutedGold
 )
 
 @Composable
-fun G1HubTheme(
+fun BreathOfFire4Theme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

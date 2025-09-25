@@ -4,27 +4,19 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import android.view.LayoutInflater
+import android.view.ViewGroup
 import androidx.activity.enableEdgeToEdge
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
+import com.google.android.material.appbar.MaterialToolbar
 import dagger.hilt.android.AndroidEntryPoint
 import io.texne.g1.hub.model.Repository
-import io.texne.g1.hub.ui.ApplicationFrame
-import io.texne.g1.hub.ui.theme.G1HubTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     @Inject
     lateinit var repository: Repository
@@ -39,18 +31,17 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
-        setContent {
-            G1HubTheme {
-                val snackbarHostState = remember { SnackbarHostState() }
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    snackbarHost = { SnackbarHost(snackbarHostState) }
-                ) { innerPadding ->
-                    Box(Modifier.padding(innerPadding).fillMaxSize()) {
-                        ApplicationFrame(snackbarHostState)
-                    }
-                }
-            }
+        setContentView(R.layout.activity_main)
+
+        val toolbar = findViewById<MaterialToolbar>(R.id.bof4Toolbar)
+        val title = getString(R.string.app_name)
+        if (toolbar.title != title) {
+            toolbar.title = title
+        }
+
+        val contentContainer = findViewById<ViewGroup>(R.id.hubContent)
+        if (contentContainer.childCount == 0) {
+            LayoutInflater.from(this).inflate(R.layout.view_hub_placeholder, contentContainer)
         }
     }
 
@@ -101,3 +92,4 @@ class MainActivity : ComponentActivity() {
         )
     }
 }
+
