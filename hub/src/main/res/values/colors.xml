@@ -6,6 +6,9 @@
     <color name="bo4_accent_teal">#FF3C7D7F</color>
     <color name="bo4_accent_gold">#FFC9A646</color>
     <color name="bo4_accent_gray">#FF5C5C58</color>
+    <color name="bof4_primary">#FF2C5D63</color>
+    <color name="bof4_secondary">#FFC4A484</color>
+    <color name="bof4_background">#FF1B1B1B</color>
     <color name="kilrogg_depths">#FF0D1B2A</color>
     <color name="kilrogg_sky">#FF6EA9C9</color>
     <color name="kilrogg_glow">#FFD8B36A</color>
