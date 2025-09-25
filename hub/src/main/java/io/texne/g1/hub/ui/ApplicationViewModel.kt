@@ -58,8 +58,8 @@ class ApplicationViewModel @Inject constructor(
         val scanning: Boolean = false,
         val serviceStatus: ServiceStatus = ServiceStatus.READY,
         val glasses: List<GlassesSnapshot>? = null,
-        val selectedSection: AppSection = AppSection.GLASSES,
         val retryCountdowns: Map<String, RetryCountdown> = emptyMap(),
+        val retryCounts: Map<String, Int> = emptyMap(),
         val telemetryEntries: List<TelemetryEntry> = emptyList(),
         val telemetryLogs: List<TelemetryLogEntry> = emptyList(),
         val status: String? = null,
@@ -114,8 +114,6 @@ class ApplicationViewModel @Inject constructor(
     private val _errorMessage = MutableLiveData<String?>(null)
     val errorMessage: LiveData<String?> get() = _errorMessage
 
-    private val selectedSection = MutableStateFlow(AppSection.GLASSES)
-
     private val retryCountdowns = MutableStateFlow<Map<String, RetryCountdown>>(emptyMap())
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
@@ -149,7 +147,6 @@ class ApplicationViewModel @Inject constructor(
 
     val state = combine(
         repository.getServiceStateFlow(),
-        selectedSection,
         retryCountdowns,
         retryCounts,
         statusAndError,
@@ -160,11 +157,10 @@ class ApplicationViewModel @Inject constructor(
     @Suppress("UNCHECKED_CAST")
     private fun buildState(values: Array<Any?>): State {
         val serviceState = values[0] as? Repository.ServiceSnapshot
-        val section = values[1] as? AppSection ?: AppSection.GLASSES
-        val retries = values[2] as? Map<String, RetryCountdown> ?: emptyMap()
-        val retryStats = values[3] as? Map<String, Int> ?: emptyMap()
-        val statusAndErrorPair = values[4] as? Pair<String?, String?> ?: (null to null)
-        val logs = values[5] as? List<TelemetryLogEntry> ?: emptyList()
+        val retries = values[1] as? Map<String, RetryCountdown> ?: emptyMap()
+        val retryStats = values[2] as? Map<String, Int> ?: emptyMap()
+        val statusAndErrorPair = values[3] as? Pair<String?, String?> ?: (null to null)
+        val logs = values[4] as? List<TelemetryLogEntry> ?: emptyList()
         val (statusText, errorText) = statusAndErrorPair
 
         return State(
@@ -177,8 +173,8 @@ class ApplicationViewModel @Inject constructor(
                 serviceState.status == ServiceStatus.READY ||
                 serviceState.status == ServiceStatus.PERMISSION_REQUIRED
             ) null else serviceState.glasses,
-            selectedSection = section,
             retryCountdowns = retries,
+            retryCounts = retryStats,
             telemetryEntries = serviceState?.glasses?.map { glasses ->
                 TelemetryEntry(
                     id = glasses.id,
@@ -311,10 +307,6 @@ class ApplicationViewModel @Inject constructor(
                 }
             }
         }
-    }
-
-    fun selectSection(section: AppSection) {
-        selectedSection.value = section
     }
 
     private fun glassesName(id: String): String {
@@ -713,9 +705,6 @@ class ApplicationViewModel @Inject constructor(
                 val preferred = activationPreference.value
                 if (gesture.type == preferred && gesture.side == G1ServiceCommon.GestureSide.RIGHT) {
                     activationEvents.emit(gesture)
-                    if (selectedSection.value != AppSection.ASSISTANT) {
-                        selectedSection.value = AppSection.ASSISTANT
-                    }
                 }
             }
         }

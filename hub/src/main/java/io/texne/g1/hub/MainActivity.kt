@@ -1,30 +1,33 @@
 package io.texne.g1.hub
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.databinding.ActivityMainBinding
 import io.texne.g1.hub.model.Repository
-import io.texne.g1.hub.ui.ApplicationFrame
+import io.texne.g1.hub.permissions.PermissionHelper
 import io.texne.g1.hub.ui.ApplicationViewModel
-import io.texne.g1.hub.ui.theme.G1HubTheme
+import io.texne.g1.hub.ui.GlassesAdapter
+import io.texne.g1.hub.ui.TelemetryEntryAdapter
+import io.texne.g1.hub.ui.TelemetryLogAdapter
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -34,6 +37,41 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val viewModel: ApplicationViewModel by viewModels()
+
+    private val glassesAdapter = GlassesAdapter(object : GlassesAdapter.GlassesActionListener {
+        override fun onConnect(id: String) {
+            runWithPermissions { viewModel.connect(id) }
+        }
+
+        override fun onDisconnect(id: String) {
+            viewModel.disconnect(id)
+        }
+
+        override fun onCancelRetry(id: String) {
+            viewModel.cancelAutoRetry(id)
+        }
+
+        override fun onRetryNow(id: String) {
+            runWithPermissions { viewModel.retryNow(id) }
+        }
+    })
+
+    private val telemetryEntryAdapter = TelemetryEntryAdapter()
+    private val telemetryLogAdapter = TelemetryLogAdapter()
+
+    private var pendingPermissionAction: (() -> Unit)? = null
+    private var autoPromptShown = false
+
+    private val permissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val action = pendingPermissionAction
+            pendingPermissionAction = null
+            if (result.resultCode == Activity.RESULT_OK) {
+                action?.invoke()
+            } else {
+                viewModel.onPermissionDenied()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,20 +85,40 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        binding.lifecycleOwner = this
-        binding.viewModel = viewModel
 
-        binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
-        binding.composeView.setContent {
-            G1HubTheme {
-                val snackbarHostState = remember { SnackbarHostState() }
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    snackbarHost = { SnackbarHost(snackbarHostState) }
-                ) { innerPadding ->
-                    Box(Modifier.padding(innerPadding).fillMaxSize()) {
-                        ApplicationFrame(snackbarHostState)
+        binding.recyclerGlasses.layoutManager = LinearLayoutManager(this)
+        binding.recyclerGlasses.adapter = glassesAdapter
+        binding.recyclerTelemetryEntries.layoutManager = LinearLayoutManager(this)
+        binding.recyclerTelemetryEntries.adapter = telemetryEntryAdapter
+        binding.recyclerTelemetryLogs.layoutManager = LinearLayoutManager(this)
+        binding.recyclerTelemetryLogs.adapter = telemetryLogAdapter
+
+        binding.buttonScan.setOnClickListener {
+            runWithPermissions { viewModel.scan() }
+        }
+        binding.buttonBondedConnect.setOnClickListener {
+            runWithPermissions { viewModel.tryBondedConnect() }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.state.collect { state ->
+                    renderState(state)
+                }
+            }
+        }
+
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiMessages.collect { message ->
+                    val text = when (message) {
+                        is ApplicationViewModel.UiMessage.AutoConnectTriggered ->
+                            getString(R.string.auto_connect_triggered, message.glassesName)
+                        is ApplicationViewModel.UiMessage.AutoConnectFailed ->
+                            getString(R.string.auto_connect_failed, message.glassesName)
+                        is ApplicationViewModel.UiMessage.Snackbar -> message.text
                     }
+                    Snackbar.make(binding.root, text, Snackbar.LENGTH_LONG).show()
                 }
             }
         }
@@ -85,6 +143,85 @@ class MainActivity : ComponentActivity() {
 
         if (bluetoothPermissionsGranted) {
             repository.bindService()
+        }
+    }
+
+    private fun renderState(state: ApplicationViewModel.State) {
+        val serviceStatusText = getString(
+            R.string.service_status_format,
+            formatServiceStatus(state.serviceStatus)
+        )
+        binding.textServiceStatus.text = serviceStatusText
+        binding.textServiceStatus.setTextColor(
+            ContextCompat.getColor(this, serviceStatusColor(state.serviceStatus))
+        )
+
+        binding.progressScanning.isVisible = state.scanning
+
+        val statusLabel = state.status ?: getString(R.string.live_data_status_unknown)
+        binding.textLiveStatus.text = getString(R.string.live_data_status_label, statusLabel)
+
+        val errorMessage = state.errorMessage
+        binding.textErrorMessage.isVisible = !errorMessage.isNullOrBlank()
+        binding.textErrorMessage.text = errorMessage
+
+        val items = state.glasses.orEmpty().map { snapshot ->
+            GlassesAdapter.GlassesItem(
+                snapshot = snapshot,
+                retryCountdown = state.retryCountdowns[snapshot.id],
+                retryCount = state.retryCounts[snapshot.id] ?: 0
+            )
+        }
+        glassesAdapter.submitList(items)
+        binding.recyclerGlasses.isVisible = items.isNotEmpty()
+        binding.textGlassesEmpty.isVisible = items.isEmpty()
+
+        telemetryEntryAdapter.submitList(state.telemetryEntries)
+        binding.recyclerTelemetryEntries.isVisible = state.telemetryEntries.isNotEmpty()
+        binding.textTelemetryEmpty.isVisible = state.telemetryEntries.isEmpty()
+
+        telemetryLogAdapter.submitList(state.telemetryLogs)
+        binding.recyclerTelemetryLogs.isVisible = state.telemetryLogs.isNotEmpty()
+        binding.textTelemetryLogsEmpty.isVisible = state.telemetryLogs.isEmpty()
+
+        if (state.serviceStatus == G1ServiceCommon.ServiceStatus.PERMISSION_REQUIRED) {
+            if (!autoPromptShown) {
+                autoPromptShown = true
+                runWithPermissions { }
+            }
+        } else {
+            autoPromptShown = false
+        }
+    }
+
+    private fun formatServiceStatus(status: G1ServiceCommon.ServiceStatus): String {
+        return when (status) {
+            G1ServiceCommon.ServiceStatus.READY -> getString(R.string.status_ready)
+            G1ServiceCommon.ServiceStatus.LOOKING -> getString(R.string.status_looking)
+            G1ServiceCommon.ServiceStatus.LOOKED -> getString(R.string.status_looked)
+            G1ServiceCommon.ServiceStatus.PERMISSION_REQUIRED -> getString(R.string.status_permission_required)
+            G1ServiceCommon.ServiceStatus.ERROR -> getString(R.string.status_error)
+        }
+    }
+
+    private fun serviceStatusColor(status: G1ServiceCommon.ServiceStatus): Int {
+        return when (status) {
+            G1ServiceCommon.ServiceStatus.ERROR -> R.color.telemetry_error
+            G1ServiceCommon.ServiceStatus.READY,
+            G1ServiceCommon.ServiceStatus.LOOKED -> R.color.telemetry_success
+            else -> R.color.telemetry_info
+        }
+    }
+
+    private fun runWithPermissions(action: () -> Unit) {
+        val intent = PermissionHelper.createPermissionIntent(this)
+        if (intent == null) {
+            action()
+            return
+        }
+        if (pendingPermissionAction == null) {
+            pendingPermissionAction = action
+            permissionLauncher.launch(intent)
         }
     }
 
