@@ -562,13 +562,13 @@ class ApplicationViewModel @Inject constructor(
     private fun rssiDescription(rssi: Int?): String = rssi?.let { "$it dBm" } ?: "—"
 
     private fun showStatus(text: String) {
-        _status.value = text
-        _errorMessage.value = null
+        _status.postValue(text)
+        _errorMessage.postValue(null)
     }
 
     private fun showConnectionFailure() {
-        _status.value = null
-        _errorMessage.value = FAILURE_MESSAGE
+        _status.postValue(null)
+        _errorMessage.postValue(FAILURE_MESSAGE)
         Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
         notify(UiMessage.Snackbar(FAILURE_MESSAGE))
         logTelemetry(
@@ -578,8 +578,8 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun showPermissionError() {
-        _status.value = null
-        _errorMessage.value = PERMISSION_MESSAGE
+        _status.postValue(null)
+        _errorMessage.postValue(PERMISSION_MESSAGE)
         notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
         logTelemetry(
             TelemetryLogType.ERROR,
@@ -588,8 +588,8 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun clearStatus() {
-        _status.value = null
-        _errorMessage.value = null
+        _status.postValue(null)
+        _errorMessage.postValue(null)
     }
 
     private fun updateRetryCount(id: String, count: Int) {
@@ -627,15 +627,15 @@ class ApplicationViewModel @Inject constructor(
     }
 
     init {
-        _glasses.value = emptyList()
-        _status.value = "Disconnected"
-        _errorMessage.value = null
+        _glasses.postValue(emptyList())
+        _status.postValue("Disconnected")
+        _errorMessage.postValue(null)
 
         viewModelScope.launch {
             repository.getServiceStateFlow().collect { serviceState ->
                 val previousSnapshot = latestServiceSnapshot
                 latestServiceSnapshot = serviceState
-                _glasses.value = serviceState?.glasses
+                _glasses.postValue(serviceState?.glasses)
                 handleTelemetrySnapshotChange(previousSnapshot, serviceState)
                 val glasses = serviceState?.glasses.orEmpty()
                 val availableIds = glasses.map { it.id }.toSet()
