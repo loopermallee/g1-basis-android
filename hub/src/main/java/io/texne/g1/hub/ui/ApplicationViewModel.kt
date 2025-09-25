@@ -155,16 +155,16 @@ class ApplicationViewModel @Inject constructor(
         retryCounts,
         statusAndError,
         telemetryLogs,
-        ::buildState
+        ::updateState
     ).stateIn(viewModelScope, SharingStarted.Lazily, State())
 
     @Suppress("UNCHECKED_CAST")
-    private fun buildState(values: Array<Any?>): State {
-        val serviceState = values[0] as? Repository.ServiceSnapshot
-        val retries = values[1] as? Map<String, RetryCountdown> ?: emptyMap()
-        val retryStats = values[2] as? Map<String, Int> ?: emptyMap()
-        val statusAndErrorPair = values[3] as? Pair<String?, String?> ?: (null to null)
-        val logs = values[4] as? List<TelemetryLogEntry> ?: emptyList()
+    private suspend fun updateState(args: Array<Any?>): State {
+        val serviceState = args[0] as? Repository.ServiceSnapshot
+        val retries = args[1] as? Map<String, RetryCountdown> ?: emptyMap()
+        val retryStats = args[2] as? Map<String, Int> ?: emptyMap()
+        val statusAndErrorPair = args[3] as? Pair<String?, String?> ?: (null to null)
+        val logs = args[4] as? List<TelemetryLogEntry> ?: emptyList()
         val (statusText, errorText) = statusAndErrorPair
 
         return State(
