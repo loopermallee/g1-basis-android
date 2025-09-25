@@ -120,7 +120,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.state.collect { state ->
+                viewModel.state.collect { state: ApplicationViewModel.State ->
                     renderState(state)
                 }
             }
