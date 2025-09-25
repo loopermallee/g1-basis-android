@@ -20,7 +20,7 @@ import androidx.compose.ui.Modifier
 import dagger.hilt.android.AndroidEntryPoint
 import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.ui.ApplicationFrame
-import io.texne.g1.hub.ui.theme.EyeOfKilroggTheme
+import io.texne.g1.hub.ui.theme.BreathOfFire4Theme
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            EyeOfKilroggTheme {
+            BreathOfFire4Theme {
                 val snackbarHostState = remember { SnackbarHostState() }
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),

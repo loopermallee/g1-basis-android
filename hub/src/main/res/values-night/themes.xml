@@ -1,18 +1,15 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.EyeOfKilrogg" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="colorPrimary">@color/kilrogg_sky</item>
-        <item name="colorPrimaryVariant">@color/kilrogg_ocean</item>
-        <item name="colorOnPrimary">@color/kilrogg_shadow</item>
-        <item name="colorSecondary">@color/kilrogg_glow</item>
-        <item name="colorSecondaryVariant">@color/kilrogg_glow_dark</item>
-        <item name="colorOnSecondary">@color/kilrogg_shadow</item>
-        <item name="colorSurface">@color/kilrogg_ocean</item>
-        <item name="colorOnSurface">@color/kilrogg_text_light</item>
-        <item name="colorBackground">@color/kilrogg_depths</item>
-        <item name="colorOnBackground">@color/kilrogg_text_light</item>
-        <item name="android:statusBarColor">@color/kilrogg_depths</item>
-        <item name="android:navigationBarColor">@color/kilrogg_depths</item>
-        <item name="android:windowBackground">@color/kilrogg_depths</item>
+    <style name="Theme.BreathOfFire4" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Background -->
+        <item name="colorBackground">@color/bo4_background_dark</item>
+        <item name="android:windowBackground">@color/bo4_background_dark</item>
+        <!-- Accent colors -->
+        <item name="colorPrimary">@color/bo4_accent_teal</item>
+        <item name="colorSecondary">@color/bo4_accent_gold</item>
+        <item name="colorOnBackground">@color/bo4_accent_gold</item>
+        <item name="colorOnSurface">@color/bo4_accent_gold</item>
+        <item name="android:statusBarColor">@color/bo4_background_dark</item>
+        <item name="android:navigationBarColor">@color/bo4_background_dark</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>
