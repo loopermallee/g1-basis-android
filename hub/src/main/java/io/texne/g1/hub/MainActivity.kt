@@ -65,6 +65,7 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // keep existing logic
         if (requestCode != REQUEST_CODE_BLUETOOTH) {
             return
         }
