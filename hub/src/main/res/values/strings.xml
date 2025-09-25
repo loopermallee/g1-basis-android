@@ -7,4 +7,15 @@
     <string name="settings_assistant_activation_option_double">Double tap</string>
     <string name="settings_assistant_activation_option_triple">Triple tap</string>
     <string name="settings_assistant_activation_option_hold">Tap and hold</string>
+    <string name="crash_title">Something went wrong</string>
+    <string name="crash_message">The app encountered an unexpected error and needs to close.</string>
+    <string name="crash_copy_button">Copy details</string>
+    <string name="crash_close_button">Close app</string>
+    <string name="crash_no_details">No crash details were provided.</string>
+    <string name="crash_thread">Thread: %1$s</string>
+    <string name="crash_cause">Cause: %1$s</string>
+    <string name="crash_stacktrace_label">Stack trace:</string>
+    <string name="crash_copy_success">Crash details copied</string>
+    <string name="crash_copy_failed">Unable to access clipboard</string>
+    <string name="crash_unknown">Unknown crash</string>
 </resources>
