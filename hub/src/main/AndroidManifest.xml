@@ -24,13 +24,13 @@
         android:name=".G1HubApplication"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.G1Hub"
+        android:theme="@style/Theme.App"
         tools:targetApi="31" >
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleInstance"
-            android:theme="@style/Theme.G1Hub">
+            android:theme="@style/Theme.App">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -40,11 +40,11 @@
             android:name=".CrashActivity"
             android:exported="false"
             android:process=":crash"
-            android:theme="@style/Theme.G1Hub" />
+            android:theme="@style/Theme.App" />
         <activity
             android:name=".permissions.PermissionActivity"
             android:exported="false"
-            android:theme="@style/Theme.G1Hub" />
+            android:theme="@style/Theme.App" />
     </application>
 
 </manifest>
