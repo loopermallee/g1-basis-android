@@ -2,6 +2,8 @@ package io.texne.g1.hub
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
+import android.os.Process
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -13,6 +15,7 @@ import io.texne.g1.hub.assistant.AssistantActivationGesture
 import io.texne.g1.hub.assistant.AssistantPreferences
 import io.texne.g1.hub.ble.G1Connector
 import javax.inject.Singleton
+import kotlin.system.exitProcess
 import kotlinx.coroutines.flow.StateFlow
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -51,4 +54,40 @@ object GlobalModule {
 }
 
 @HiltAndroidApp
-class G1HubApplication: Application()
+class G1HubApplication: Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val handled = handleUncaughtException(thread, throwable)
+            if (!handled) {
+                previousHandler?.uncaughtException(thread, throwable)
+            }
+        }
+    }
+
+    private fun handleUncaughtException(thread: Thread, throwable: Throwable): Boolean {
+        val stackTrace = android.util.Log.getStackTraceString(throwable)
+        val cause = throwable.toString()
+
+        val intent = Intent(this, CrashActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            putExtra(CrashActivity.EXTRA_THREAD_NAME, thread.name)
+            putExtra(CrashActivity.EXTRA_CAUSE, cause)
+            putExtra(CrashActivity.EXTRA_STACKTRACE, stackTrace)
+        }
+
+        val started = runCatching { startActivity(intent) }.isSuccess
+
+        if (!started) {
+            return false
+        }
+
+        Process.killProcess(Process.myPid())
+        exitProcess(10)
+
+        return true
+    }
+}

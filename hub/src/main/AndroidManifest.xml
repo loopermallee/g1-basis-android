@@ -37,6 +37,11 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".CrashActivity"
+            android:exported="false"
+            android:process=":crash"
+            android:theme="@style/Theme.G1Hub" />
+        <activity
             android:name=".permissions.PermissionActivity"
             android:exported="false"
             android:theme="@style/Theme.G1Hub" />
