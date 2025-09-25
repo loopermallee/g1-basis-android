@@ -317,8 +317,20 @@ class ApplicationViewModel @Inject constructor(
         selectedSection.value = section
     }
 
-    private fun glassesName(id: String): String =
-        latestServiceSnapshot?.glasses?.firstOrNull { it.id == id }?.name ?: id
+    private fun glassesName(id: String): String {
+        val liveDataName = glasses.value
+            ?.firstOrNull { it.id == id }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
+        if (liveDataName != null) {
+            return liveDataName
+        }
+        return latestServiceSnapshot?.glasses
+            ?.firstOrNull { it.id == id }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
+            ?: id
+    }
 
     private fun notify(message: UiMessage) {
         viewModelScope.launch {
