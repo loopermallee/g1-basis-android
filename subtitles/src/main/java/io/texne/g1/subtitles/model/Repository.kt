@@ -56,7 +56,7 @@ class Repository @Inject constructor(
 
     //
 
-    private lateinit var service: G1ServiceClient
+    private var service: G1ServiceClient? = null
 
     fun initializeSpeechRecognizer(coroutineScope: CoroutineScope) {
         recognizer.create(coroutineScope)
@@ -102,9 +102,10 @@ class Repository @Inject constructor(
     }
 
     fun bindService(coroutineScope: CoroutineScope): Boolean {
-        service = G1ServiceClient.open(applicationContext) ?: return false
+        val client = G1ServiceClient.open(applicationContext) ?: return false
+        service = client
         coroutineScope.launch {
-            service.state.collect {
+            client.state.collect {
                 writableState.value = state.value.copy(
                     glasses = it?.glasses?.filter { it.status == G1ServiceCommon.GlassesStatus.CONNECTED }?.firstOrNull()
                 )
@@ -113,15 +114,23 @@ class Repository @Inject constructor(
         return true
     }
 
-    fun unbindService() =
-        service.close()
+    fun unbindService() {
+        service?.close()
+        service = null
+    }
 
-    suspend fun displayText(text: List<String>) =
-        service.displayFormattedPage(state.value.glasses!!.id, G1ServiceCommon.FormattedPage(
+    suspend fun displayText(text: List<String>) {
+        val glasses = state.value.glasses ?: return
+        val client = service ?: return
+        client.displayFormattedPage(glasses.id, G1ServiceCommon.FormattedPage(
             lines = text.map { G1ServiceCommon.FormattedLine(text = it, justify = G1ServiceCommon.JustifyLine.LEFT) },
             justify = G1ServiceCommon.JustifyPage.BOTTOM
         ))
+    }
 
-    suspend fun stopDisplaying() =
-        service.stopDisplaying(state.value.glasses!!.id)
+    suspend fun stopDisplaying() {
+        val glasses = state.value.glasses ?: return
+        val client = service ?: return
+        client.stopDisplaying(glasses.id)
+    }
 }
