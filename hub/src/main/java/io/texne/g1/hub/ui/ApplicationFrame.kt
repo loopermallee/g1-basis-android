@@ -149,6 +149,8 @@ fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
                 AppSection.TELEMETRY -> {
                     TelemetryScreen(
                         entries = state.telemetryEntries,
+                        logs = state.telemetryLogs,
+                        serviceStatus = state.serviceStatus,
                         onDisconnect = viewModel::disconnect
                     )
                 }
