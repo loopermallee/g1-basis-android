@@ -249,6 +249,12 @@ private fun ServiceStatusBanner(
 
 @Composable
 private fun StatusMessageCard(message: String) {
+    val supportingText = when (message) {
+        "Connected" -> "You're connected to your glasses."
+        "Looking for glasses…", "Trying bonded connect…" ->
+            "We’ll automatically stop scanning once we connect."
+        else -> null
+    }
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,11 +272,13 @@ private fun StatusMessageCard(message: String) {
                 fontWeight = FontWeight.SemiBold,
                 color = Color.Black
             )
-            Text(
-                text = "We’ll automatically stop scanning once we connect.",
-                fontSize = 12.sp,
-                color = Color.Gray
-            )
+            if (!supportingText.isNullOrEmpty()) {
+                Text(
+                    text = supportingText,
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
         }
     }
 }
