@@ -1,5 +1,6 @@
 package io.texne.g1.hub.ui
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import android.util.Log
 
 @HiltViewModel
 class ApplicationViewModel @Inject constructor(
@@ -41,6 +41,7 @@ class ApplicationViewModel @Inject constructor(
         private const val PERMISSION_MESSAGE = "Bluetooth permission is required. Please allow 'Nearby devices'."
         private const val FAILURE_MESSAGE = "Couldn’t find/connect to glasses.\nTips: Unfold glasses, close the Even app (MentraOS), toggle Bluetooth, and retry."
         private const val RETRY_DELAY_SECONDS = 10
+        private const val MAX_TELEMETRY_LOG_ENTRIES = 200
     }
 
     data class RetryCountdown(
@@ -53,11 +54,11 @@ class ApplicationViewModel @Inject constructor(
         val error: Boolean = false,
         val scanning: Boolean = false,
         val serviceStatus: ServiceStatus = ServiceStatus.READY,
-        val nearbyGlasses: List<GlassesSnapshot>? = null,
-        val selectedSection: AppSection = AppSection.GLASSES,
+        val glasses: List<GlassesSnapshot>? = null,
         val retryCountdowns: Map<String, RetryCountdown> = emptyMap(),
+        val retryCounts: Map<String, Int> = emptyMap(),
         val telemetryEntries: List<TelemetryEntry> = emptyList(),
-        val statusMessage: String? = null,
+        val telemetryLogs: List<TelemetryLogEntry> = emptyList(),
         val errorMessage: String? = null
     )
 
@@ -65,10 +66,25 @@ class ApplicationViewModel @Inject constructor(
         val id: String,
         val name: String,
         val status: G1ServiceCommon.GlassesStatus,
+        val leftStatus: G1ServiceCommon.GlassesStatus,
+        val rightStatus: G1ServiceCommon.GlassesStatus,
+        val batteryPercentage: Int,
+        val leftBatteryPercentage: Int,
+        val rightBatteryPercentage: Int,
         val signalStrength: Int?,
         val rssi: Int?,
-        val retryCount: Int
+        val retryCount: Int,
+        val lastUpdatedAt: Long
     )
+
+    data class TelemetryLogEntry(
+        val id: Long,
+        val timestampMillis: Long,
+        val message: String,
+        val type: TelemetryLogType
+    )
+
+    enum class TelemetryLogType { INFO, SUCCESS, ERROR }
 
     sealed class UiMessage {
         data class AutoConnectTriggered(val glassesName: String) : UiMessage()
@@ -85,14 +101,13 @@ class ApplicationViewModel @Inject constructor(
         var retryCount: Int = 0
     )
 
-    private val selectedSection = MutableStateFlow(AppSection.GLASSES)
+    val glasses: String = ""
+    val status: String = "unknown"
 
     private val retryCountdowns = MutableStateFlow<Map<String, RetryCountdown>>(emptyMap())
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
     private val retryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    private val statusMessage = MutableStateFlow<String?>(null)
-    private val errorMessage = MutableStateFlow<String?>(null)
 
     private val messages = MutableSharedFlow<UiMessage>(
         replay = 0,
@@ -102,6 +117,9 @@ class ApplicationViewModel @Inject constructor(
 
     val uiMessages = messages.asSharedFlow()
     private var latestServiceSnapshot: Repository.ServiceSnapshot? = null
+    private val telemetryLogs = MutableStateFlow<List<TelemetryLogEntry>>(emptyList())
+    private var telemetryLogCounter = 0L
+    private val telemetryTimestamps = mutableMapOf<String, Long>()
 
     private val activationEvents = MutableSharedFlow<G1ServiceCommon.GestureEvent>(
         replay = 0,
@@ -113,59 +131,86 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    private val statusAndError = combine(statusMessage, errorMessage) { statusText, errorText ->
-        statusText to errorText
-    }
-
     val state = combine(
         repository.getServiceStateFlow(),
-        selectedSection,
         retryCountdowns,
         retryCounts,
-        statusAndError
-    ) { serviceState, section, retries, retryStats, statusAndErrorPair ->
-        val (statusText, errorText) = statusAndErrorPair
-        State(
-            connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
-            error = serviceState?.status == ServiceStatus.ERROR,
-            scanning = serviceState?.status == ServiceStatus.LOOKING,
-            serviceStatus = serviceState?.status ?: ServiceStatus.READY,
-            nearbyGlasses = if (
-                serviceState == null ||
-                serviceState.status == ServiceStatus.READY ||
-                serviceState.status == ServiceStatus.PERMISSION_REQUIRED
-            ) null else serviceState.glasses,
-            selectedSection = section,
-            retryCountdowns = retries,
-            telemetryEntries = serviceState?.glasses?.map { glasses ->
-                TelemetryEntry(
-                    id = glasses.id,
-                    name = glasses.name,
-                    status = glasses.status,
-                    signalStrength = glasses.signalStrength,
-                    rssi = glasses.rssi,
-                    retryCount = retryStats[glasses.id] ?: 0
-                )
-            } ?: emptyList(),
-            statusMessage = statusText,
-            errorMessage = errorText
+        telemetryLogs,
+        ::updateState
+    ).stateIn(viewModelScope, SharingStarted.Lazily, State())
+
+    private suspend fun updateState(
+        serviceSnapshot: Repository.ServiceSnapshot?,
+        countdowns: Map<String, RetryCountdown>,
+        counts: Map<String, Int>,
+        logs: List<TelemetryLogEntry>
+    ): State {
+        val glasses = serviceSnapshot?.glasses.orEmpty()
+        val serviceStatus = serviceSnapshot?.status ?: ServiceStatus.READY
+        val connected = glasses.firstOrNull { snapshot ->
+            snapshot.status == G1ServiceCommon.GlassesStatus.CONNECTED
+        }
+
+        val currentIds = glasses.map { it.id }.toSet()
+        telemetryTimestamps.keys.retainAll(currentIds)
+
+        val telemetryEntries = glasses.map { snapshot ->
+            TelemetryEntry(
+                id = snapshot.id,
+                name = snapshot.name,
+                status = snapshot.status,
+                leftStatus = snapshot.left.status,
+                rightStatus = snapshot.right.status,
+                batteryPercentage = snapshot.batteryPercentage,
+                leftBatteryPercentage = snapshot.left.batteryPercentage,
+                rightBatteryPercentage = snapshot.right.batteryPercentage,
+                signalStrength = snapshot.signalStrength,
+                rssi = snapshot.rssi,
+                retryCount = counts[snapshot.id] ?: 0,
+                lastUpdatedAt = telemetryTimestamps[snapshot.id] ?: System.currentTimeMillis()
+            )
+        }.sortedBy { entry -> entry.name.ifBlank { entry.id } }
+
+        val errorMessage = when (serviceStatus) {
+            ServiceStatus.PERMISSION_REQUIRED -> PERMISSION_MESSAGE
+            ServiceStatus.ERROR -> FAILURE_MESSAGE
+            else -> null
+        }
+
+        return State(
+            connectedGlasses = connected,
+            error = serviceStatus == ServiceStatus.ERROR,
+            scanning = serviceStatus == ServiceStatus.LOOKING,
+            serviceStatus = serviceStatus,
+            glasses = glasses,
+            retryCountdowns = countdowns,
+            retryCounts = counts,
+            telemetryEntries = telemetryEntries,
+            telemetryLogs = logs,
+            errorMessage = errorMessage
         )
-    }.stateIn(viewModelScope, SharingStarted.Lazily, State())
+    }
 
     fun scan() {
         viewModelScope.launch {
             showStatus(STATUS_LOOKING)
+            logTelemetry(TelemetryLogType.INFO, "Starting smart connect scan")
             repository.startLooking()
             val result = try {
                 withContext(Dispatchers.IO) { connector.connectSmart() }
             } catch (error: Throwable) {
                 Log.w(TAG, "connectSmart error", error)
+                logTelemetry(
+                    TelemetryLogType.ERROR,
+                    "Smart connect encountered ${error::class.java.simpleName}: ${error.message ?: "unknown error"}"
+                )
                 G1Connector.Result.NotFound
             }
             when (result) {
                 is G1Connector.Result.Success -> {
                     showStatus(STATUS_CONNECTED)
                     notify(UiMessage.Snackbar("Connected to glasses"))
+                    logTelemetry(TelemetryLogType.SUCCESS, "Smart connect succeeded")
                 }
                 is G1Connector.Result.PermissionMissing -> {
                     showPermissionError()
@@ -186,6 +231,10 @@ class ApplicationViewModel @Inject constructor(
         connectionAttempts[id] = attempt
         updateRetryCount(id, attempt.retryCount)
         clearRetryCountdown(id, removeRequest = false)
+        logTelemetry(
+            TelemetryLogType.INFO,
+            "Manual connect requested for ${glassesName(id)} ($id)"
+        )
         viewModelScope.launch {
             repository.connectGlasses(id)
         }
@@ -194,6 +243,10 @@ class ApplicationViewModel @Inject constructor(
     fun disconnect(id: String) {
         clearStatus()
         clearRetryCountdown(id, removeRequest = true)
+        logTelemetry(
+            TelemetryLogType.INFO,
+            "Disconnect requested for ${glassesName(id)} ($id)"
+        )
         repository.disconnectGlasses(id)
     }
 
@@ -202,28 +255,42 @@ class ApplicationViewModel @Inject constructor(
     }
 
     fun cancelAutoRetry(id: String) {
+        logTelemetry(
+            TelemetryLogType.INFO,
+            "Cancelled auto retry for ${glassesName(id)}"
+        )
         clearRetryCountdown(id, removeRequest = true)
     }
 
     fun retryNow(id: String) {
         clearStatus()
         clearRetryCountdown(id, removeRequest = false)
+        logTelemetry(
+            TelemetryLogType.INFO,
+            "Manual retry triggered for ${glassesName(id)}"
+        )
         connect(id)
     }
 
     fun tryBondedConnect() {
         viewModelScope.launch {
             showStatus(STATUS_TRY_BONDED)
+            logTelemetry(TelemetryLogType.INFO, "Attempting bonded connect")
             val result = try {
                 withContext(Dispatchers.IO) { connector.tryBondedConnect() }
             } catch (error: Throwable) {
                 Log.w(TAG, "tryBondedConnect error", error)
+                logTelemetry(
+                    TelemetryLogType.ERROR,
+                    "Bonded connect encountered ${error::class.java.simpleName}: ${error.message ?: "unknown error"}"
+                )
                 G1Connector.Result.NotFound
             }
             when (result) {
                 is G1Connector.Result.Success -> {
                     showStatus(STATUS_CONNECTED)
                     notify(UiMessage.Snackbar("Bonded connect succeeded"))
+                    logTelemetry(TelemetryLogType.SUCCESS, "Bonded connect succeeded")
                 }
                 is G1Connector.Result.PermissionMissing -> {
                     showPermissionError()
@@ -236,12 +303,13 @@ class ApplicationViewModel @Inject constructor(
         }
     }
 
-    fun selectSection(section: AppSection) {
-        selectedSection.value = section
+    private fun glassesName(id: String): String {
+        return latestServiceSnapshot?.glasses
+            ?.firstOrNull { it.id == id }
+            ?.name
+            ?.takeIf { it.isNotBlank() }
+            ?: id
     }
-
-    private fun glassesName(id: String): String =
-        latestServiceSnapshot?.glasses?.firstOrNull { it.id == id }?.name ?: id
 
     private fun notify(message: UiMessage) {
         viewModelScope.launch {
@@ -249,27 +317,264 @@ class ApplicationViewModel @Inject constructor(
         }
     }
 
+    private fun logTelemetry(type: TelemetryLogType, message: String) {
+        telemetryLogs.update { current ->
+            val entry = TelemetryLogEntry(
+                id = ++telemetryLogCounter,
+                timestampMillis = System.currentTimeMillis(),
+                message = message,
+                type = type
+            )
+            val updated = current + entry
+            if (updated.size > MAX_TELEMETRY_LOG_ENTRIES) {
+                updated.takeLast(MAX_TELEMETRY_LOG_ENTRIES)
+            } else {
+                updated
+            }
+        }
+    }
+
+    private fun handleTelemetrySnapshotChange(
+        previous: Repository.ServiceSnapshot?,
+        current: Repository.ServiceSnapshot?
+    ) {
+        if (previous?.status != current?.status) {
+            current?.status?.let { status ->
+                val (type, text) = serviceStatusLog(status)
+                logTelemetry(type, text)
+            } ?: run {
+                logTelemetry(TelemetryLogType.INFO, "Service telemetry unavailable")
+            }
+        }
+
+        if (current == null) {
+            telemetryTimestamps.clear()
+            return
+        }
+
+        val previousGlasses = previous?.glasses.orEmpty().associateBy { it.id }
+        val now = System.currentTimeMillis()
+        val currentIds = mutableSetOf<String>()
+
+        current.glasses.forEach { snapshot ->
+            val previousSnapshot = previousGlasses[snapshot.id]
+            val displayName = snapshot.name.ifBlank { snapshot.id }
+            if (previousSnapshot == null) {
+                telemetryTimestamps[snapshot.id] = now
+                logTelemetry(
+                    TelemetryLogType.INFO,
+                    "Receiving telemetry from $displayName (${snapshot.id})"
+                )
+                val (statusType, statusMessage) = glassesStatusLog(displayName, snapshot.status)
+                logTelemetry(statusType, statusMessage)
+                val (leftType, leftMessage) = lensStatusLog(
+                    side = "Left",
+                    name = displayName,
+                    status = snapshot.left.status
+                )
+                logTelemetry(leftType, leftMessage)
+                val (rightType, rightMessage) = lensStatusLog(
+                    side = "Right",
+                    name = displayName,
+                    status = snapshot.right.status
+                )
+                logTelemetry(rightType, rightMessage)
+                val (signalType, signalMessage) = signalLog(displayName, snapshot.signalStrength)
+                logTelemetry(signalType, signalMessage)
+                val (rssiType, rssiMessage) = rssiLog(displayName, snapshot.rssi)
+                logTelemetry(rssiType, rssiMessage)
+                val (batteryType, batteryMessage) = batteryLog(
+                    label = "$displayName overall",
+                    percentage = snapshot.batteryPercentage
+                )
+                logTelemetry(batteryType, batteryMessage)
+                val (leftBatteryType, leftBatteryMessage) = batteryLog(
+                    label = "$displayName left",
+                    percentage = snapshot.left.batteryPercentage
+                )
+                logTelemetry(leftBatteryType, leftBatteryMessage)
+                val (rightBatteryType, rightBatteryMessage) = batteryLog(
+                    label = "$displayName right",
+                    percentage = snapshot.right.batteryPercentage
+                )
+                logTelemetry(rightBatteryType, rightBatteryMessage)
+            } else {
+                if (previousSnapshot != snapshot || !telemetryTimestamps.containsKey(snapshot.id)) {
+                    telemetryTimestamps[snapshot.id] = now
+                }
+
+                if (previousSnapshot.status != snapshot.status) {
+                    val (type, message) = glassesStatusLog(displayName, snapshot.status)
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.left.status != snapshot.left.status) {
+                    val (type, message) = lensStatusLog(
+                        side = "Left",
+                        name = displayName,
+                        status = snapshot.left.status
+                    )
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.right.status != snapshot.right.status) {
+                    val (type, message) = lensStatusLog(
+                        side = "Right",
+                        name = displayName,
+                        status = snapshot.right.status
+                    )
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.signalStrength != snapshot.signalStrength) {
+                    val (type, message) = signalLog(displayName, snapshot.signalStrength)
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.rssi != snapshot.rssi) {
+                    val (type, message) = rssiLog(displayName, snapshot.rssi)
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.batteryPercentage != snapshot.batteryPercentage) {
+                    val (type, message) = batteryLog(
+                        label = "$displayName overall",
+                        percentage = snapshot.batteryPercentage
+                    )
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.left.batteryPercentage != snapshot.left.batteryPercentage) {
+                    val (type, message) = batteryLog(
+                        label = "$displayName left",
+                        percentage = snapshot.left.batteryPercentage
+                    )
+                    logTelemetry(type, message)
+                }
+
+                if (previousSnapshot.right.batteryPercentage != snapshot.right.batteryPercentage) {
+                    val (type, message) = batteryLog(
+                        label = "$displayName right",
+                        percentage = snapshot.right.batteryPercentage
+                    )
+                    logTelemetry(type, message)
+                }
+            }
+
+            currentIds.add(snapshot.id)
+        }
+
+        val removedIds = previousGlasses.keys - currentIds
+        removedIds.forEach { id ->
+            val name = previousGlasses[id]?.name?.takeIf { it.isNotBlank() } ?: id
+            logTelemetry(TelemetryLogType.INFO, "Stopped receiving telemetry from $name")
+            telemetryTimestamps.remove(id)
+        }
+    }
+
+    private fun serviceStatusLog(status: ServiceStatus): Pair<TelemetryLogType, String> = when (status) {
+        ServiceStatus.READY -> TelemetryLogType.INFO to "Service ready"
+        ServiceStatus.LOOKING -> TelemetryLogType.INFO to "Service is scanning for glasses"
+        ServiceStatus.LOOKED -> TelemetryLogType.INFO to "Scan cycle completed"
+        ServiceStatus.PERMISSION_REQUIRED -> TelemetryLogType.ERROR to "Bluetooth permission required to continue"
+        ServiceStatus.ERROR -> TelemetryLogType.ERROR to "Service reported an error state"
+    }
+
+    private fun glassesStatusLog(name: String, status: G1ServiceCommon.GlassesStatus): Pair<TelemetryLogType, String> {
+        val type = when (status) {
+            G1ServiceCommon.GlassesStatus.CONNECTED -> TelemetryLogType.SUCCESS
+            G1ServiceCommon.GlassesStatus.ERROR -> TelemetryLogType.ERROR
+            else -> TelemetryLogType.INFO
+        }
+        return type to "$name status: ${glassesStatusDescription(status)}"
+    }
+
+    private fun lensStatusLog(
+        side: String,
+        name: String,
+        status: G1ServiceCommon.GlassesStatus
+    ): Pair<TelemetryLogType, String> {
+        val type = when (status) {
+            G1ServiceCommon.GlassesStatus.CONNECTED -> TelemetryLogType.SUCCESS
+            G1ServiceCommon.GlassesStatus.ERROR -> TelemetryLogType.ERROR
+            else -> TelemetryLogType.INFO
+        }
+        return type to "$side eye status for $name: ${glassesStatusDescription(status)}"
+    }
+
+    private fun signalLog(name: String, strength: Int?): Pair<TelemetryLogType, String> {
+        val type = when (strength) {
+            null -> TelemetryLogType.INFO
+            4, 3 -> TelemetryLogType.SUCCESS
+            2 -> TelemetryLogType.INFO
+            else -> TelemetryLogType.ERROR
+        }
+        return type to "Signal strength for $name is ${signalDescription(strength)}"
+    }
+
+    private fun rssiLog(name: String, rssi: Int?): Pair<TelemetryLogType, String> {
+        val type = when {
+            rssi == null -> TelemetryLogType.INFO
+            rssi >= -60 -> TelemetryLogType.SUCCESS
+            rssi >= -80 -> TelemetryLogType.INFO
+            else -> TelemetryLogType.ERROR
+        }
+        return type to "RSSI for $name is ${rssiDescription(rssi)}"
+    }
+
+    private fun batteryLog(label: String, percentage: Int): Pair<TelemetryLogType, String> {
+        val type = when {
+            percentage >= 50 -> TelemetryLogType.SUCCESS
+            percentage >= 20 -> TelemetryLogType.INFO
+            else -> TelemetryLogType.ERROR
+        }
+        return type to "Battery ($label) at ${percentage.coerceIn(0, 100)}%"
+    }
+
+    private fun glassesStatusDescription(status: G1ServiceCommon.GlassesStatus): String = when (status) {
+        G1ServiceCommon.GlassesStatus.UNINITIALIZED -> "Waiting"
+        G1ServiceCommon.GlassesStatus.DISCONNECTED -> "Disconnected"
+        G1ServiceCommon.GlassesStatus.CONNECTING -> "Connecting"
+        G1ServiceCommon.GlassesStatus.CONNECTED -> "Connected"
+        G1ServiceCommon.GlassesStatus.DISCONNECTING -> "Disconnecting"
+        G1ServiceCommon.GlassesStatus.ERROR -> "Error"
+    }
+
+    private fun signalDescription(strength: Int?): String = when (strength) {
+        null -> "Unknown"
+        4 -> "Excellent (4/4)"
+        3 -> "Good (3/4)"
+        2 -> "Fair (2/4)"
+        1 -> "Weak (1/4)"
+        0 -> "Very weak (0/4)"
+        else -> "Unknown"
+    }
+
+    private fun rssiDescription(rssi: Int?): String = rssi?.let { "$it dBm" } ?: "—"
+
     private fun showStatus(text: String) {
-        statusMessage.value = text
-        errorMessage.value = null
+        logTelemetry(TelemetryLogType.INFO, "Status update: $text")
     }
 
     private fun showConnectionFailure() {
-        statusMessage.value = null
-        errorMessage.value = FAILURE_MESSAGE
         Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
         notify(UiMessage.Snackbar(FAILURE_MESSAGE))
+        logTelemetry(
+            TelemetryLogType.ERROR,
+            "Connection attempt failed. Couldn’t find or connect to glasses."
+        )
     }
 
     private fun showPermissionError() {
-        statusMessage.value = null
-        errorMessage.value = PERMISSION_MESSAGE
         notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
+        logTelemetry(
+            TelemetryLogType.ERROR,
+            "Bluetooth permission is required to continue"
+        )
     }
 
     private fun clearStatus() {
-        statusMessage.value = null
-        errorMessage.value = null
+        // No-op placeholder while status handling is disabled.
     }
 
     private fun updateRetryCount(id: String, count: Int) {
@@ -296,6 +601,10 @@ class ApplicationViewModel @Inject constructor(
         connectionAttempts[id] = attempt
         updateRetryCount(id, attempt.retryCount)
         val name = glassesName(id)
+        logTelemetry(
+            TelemetryLogType.INFO,
+            "Auto reconnect attempt #${attempt.retryCount} for $name"
+        )
         notify(UiMessage.AutoConnectTriggered(name))
         viewModelScope.launch {
             repository.connectGlasses(id)
@@ -305,7 +614,9 @@ class ApplicationViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             repository.getServiceStateFlow().collect { serviceState ->
+                val previousSnapshot = latestServiceSnapshot
                 latestServiceSnapshot = serviceState
+                handleTelemetrySnapshotChange(previousSnapshot, serviceState)
                 val glasses = serviceState?.glasses.orEmpty()
                 val availableIds = glasses.map { it.id }.toSet()
                 val inactiveIds = connectionAttempts.keys.filterNot { availableIds.contains(it) }
@@ -370,9 +681,6 @@ class ApplicationViewModel @Inject constructor(
                 val preferred = activationPreference.value
                 if (gesture.type == preferred && gesture.side == G1ServiceCommon.GestureSide.RIGHT) {
                     activationEvents.emit(gesture)
-                    if (selectedSection.value != AppSection.ASSISTANT) {
-                        selectedSection.value = AppSection.ASSISTANT
-                    }
                 }
             }
         }
@@ -391,6 +699,10 @@ class ApplicationViewModel @Inject constructor(
                 this[id] = RetryCountdown(RETRY_DELAY_SECONDS, nextAttemptAt)
             }
         }
+        logTelemetry(
+            TelemetryLogType.INFO,
+            "Scheduling auto retry for ${glassesName(id)} in $RETRY_DELAY_SECONDS seconds"
+        )
         val job = viewModelScope.launch {
             var remaining = RETRY_DELAY_SECONDS
             while (isActive && remaining > 0 && connectionAttempts.containsKey(id)) {

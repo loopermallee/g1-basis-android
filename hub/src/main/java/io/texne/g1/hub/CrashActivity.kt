@@ -5,53 +5,55 @@ import android.content.ClipboardManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
-import io.texne.g1.hub.ui.theme.G1HubTheme
+import androidx.core.view.isVisible
+import io.texne.g1.hub.databinding.ActivityCrashBinding
 
 class CrashActivity : ComponentActivity() {
+
+    private lateinit var binding: ActivityCrashBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        binding = ActivityCrashBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
         val cause = intent.getStringExtra(EXTRA_CAUSE).orEmpty()
         val stackTrace = intent.getStringExtra(EXTRA_STACKTRACE).orEmpty()
         val threadName = intent.getStringExtra(EXTRA_THREAD_NAME).orEmpty()
 
-        setContent {
-            G1HubTheme {
-                CrashScreen(
-                    threadName = threadName,
-                    cause = cause,
-                    stackTrace = stackTrace,
-                    onCopy = { copyCrashDetails(threadName, cause, stackTrace) },
-                    onClose = { finishAffinity() }
-                )
-            }
+        renderCrashDetails(threadName, cause, stackTrace)
+
+        binding.buttonCopy.setOnClickListener {
+            copyCrashDetails(threadName, cause, stackTrace)
+        }
+        binding.buttonClose.setOnClickListener {
+            finishAffinity()
+        }
+    }
+
+    private fun renderCrashDetails(threadName: String, cause: String, stackTrace: String) {
+        if (threadName.isNotBlank()) {
+            binding.textCrashThread.isVisible = true
+            binding.textCrashThread.text = getString(R.string.crash_thread, threadName)
+        }
+
+        if (cause.isNotBlank()) {
+            binding.textCrashCause.isVisible = true
+            binding.textCrashCause.text = getString(R.string.crash_cause, cause)
+        }
+
+        if (stackTrace.isNotBlank()) {
+            binding.textCrashStacktraceLabel.isVisible = true
+            binding.textCrashStacktrace.isVisible = true
+            binding.textCrashStacktrace.text = stackTrace
+        }
+
+        if (threadName.isBlank() && cause.isBlank() && stackTrace.isBlank()) {
+            binding.textCrashNoDetails.isVisible = true
         }
     }
 
@@ -83,92 +85,5 @@ class CrashActivity : ComponentActivity() {
         const val EXTRA_CAUSE = "extra_cause"
         const val EXTRA_STACKTRACE = "extra_stacktrace"
         const val EXTRA_THREAD_NAME = "extra_thread_name"
-    }
-}
-
-@Composable
-private fun CrashScreen(
-    threadName: String,
-    cause: String,
-    stackTrace: String,
-    onCopy: () -> Unit,
-    onClose: () -> Unit
-) {
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.crash_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = stringResource(R.string.crash_message),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            val scrollState = rememberScrollState()
-            SelectionContainer {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
-                        .padding(16.dp)
-                        .verticalScroll(scrollState),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    if (threadName.isNotBlank()) {
-                        Text(
-                            text = stringResource(R.string.crash_thread, threadName),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    if (cause.isNotBlank()) {
-                        Text(
-                            text = stringResource(R.string.crash_cause, cause),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    if (stackTrace.isNotBlank()) {
-                        Text(
-                            text = stringResource(R.string.crash_stacktrace_label),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = stackTrace,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                    if (threadName.isBlank() && cause.isBlank() && stackTrace.isBlank()) {
-                        Text(
-                            text = stringResource(R.string.crash_no_details),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(onClick = onCopy) {
-                    Text(stringResource(R.string.crash_copy_button))
-                }
-                TextButton(onClick = onClose) {
-                    Text(stringResource(R.string.crash_close_button))
-                }
-            }
-        }
     }
 }
