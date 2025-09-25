@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asFlow
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import io.texne.g1.basis.client.G1ServiceCommon
@@ -104,14 +105,21 @@ class ApplicationViewModel @Inject constructor(
         var retryCount: Int = 0
     )
 
+    private val _glasses = MutableLiveData<List<GlassesSnapshot>?>(emptyList())
+    val glasses: LiveData<List<GlassesSnapshot>?> get() = _glasses
+
+    private val _status = MutableLiveData<String?>("Disconnected")
+    val status: LiveData<String?> get() = _status
+
+    private val _errorMessage = MutableLiveData<String?>(null)
+    val errorMessage: LiveData<String?> get() = _errorMessage
+
     private val selectedSection = MutableStateFlow(AppSection.GLASSES)
 
     private val retryCountdowns = MutableStateFlow<Map<String, RetryCountdown>>(emptyMap())
     private val retryJobs = mutableMapOf<String, Job>()
     private val connectionAttempts = mutableMapOf<String, AttemptState>()
     private val retryCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    private val status = MutableStateFlow<String?>(null)
-    private val errorMessage = MutableStateFlow<String?>(null)
 
     private val messages = MutableSharedFlow<UiMessage>(
         replay = 0,
@@ -135,7 +143,7 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    private val statusAndError = combine(status, errorMessage) { statusText, errorText ->
+    private val statusAndError = combine(status.asFlow(), _errorMessage.asFlow()) { statusText, errorText ->
         statusText to errorText
     }
 
@@ -554,13 +562,13 @@ class ApplicationViewModel @Inject constructor(
     private fun rssiDescription(rssi: Int?): String = rssi?.let { "$it dBm" } ?: "—"
 
     private fun showStatus(text: String) {
-        status.value = text
-        errorMessage.value = null
+        _status.value = text
+        _errorMessage.value = null
     }
 
     private fun showConnectionFailure() {
-        status.value = null
-        errorMessage.value = FAILURE_MESSAGE
+        _status.value = null
+        _errorMessage.value = FAILURE_MESSAGE
         Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
         notify(UiMessage.Snackbar(FAILURE_MESSAGE))
         logTelemetry(
@@ -570,8 +578,8 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun showPermissionError() {
-        status.value = null
-        errorMessage.value = PERMISSION_MESSAGE
+        _status.value = null
+        _errorMessage.value = PERMISSION_MESSAGE
         notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
         logTelemetry(
             TelemetryLogType.ERROR,
@@ -580,8 +588,8 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun clearStatus() {
-        status.value = null
-        errorMessage.value = null
+        _status.value = null
+        _errorMessage.value = null
     }
 
     private fun updateRetryCount(id: String, count: Int) {
@@ -619,10 +627,15 @@ class ApplicationViewModel @Inject constructor(
     }
 
     init {
+        _glasses.value = emptyList()
+        _status.value = "Disconnected"
+        _errorMessage.value = null
+
         viewModelScope.launch {
             repository.getServiceStateFlow().collect { serviceState ->
                 val previousSnapshot = latestServiceSnapshot
                 latestServiceSnapshot = serviceState
+                _glasses.value = serviceState?.glasses
                 handleTelemetrySnapshotChange(previousSnapshot, serviceState)
                 val glasses = serviceState?.glasses.orEmpty()
                 val availableIds = glasses.map { it.id }.toSet()
