@@ -45,7 +45,7 @@ import io.texne.g1.hub.ui.telemetry.TelemetryScreen
 @Composable
 fun ApplicationFrame(snackbarHostState: SnackbarHostState) {
     val viewModel = hiltViewModel<ApplicationViewModel>()
-    val state by viewModel.state.collectAsState()
+    val state = viewModel.state.collectAsState().value
     val selectedSection = state.selectedSection
     val context = LocalContext.current
     var pendingPermissionAction by remember { mutableStateOf<(() -> Unit)?>(null) }
