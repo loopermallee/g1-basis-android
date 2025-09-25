@@ -12,5 +12,6 @@
         <item name="android:navigationBarColor">@color/bo4_accent_teal</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="materialButtonStyle">@style/Widget.BOF4.Button</item>
+        <item name="dialogTheme">@style/Widget.BOF4.Dialog</item>
     </style>
 </resources>

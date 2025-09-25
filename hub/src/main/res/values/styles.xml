@@ -20,4 +20,11 @@
         <item name="titleTextColor">@color/bo4_background_light</item>
         <item name="subtitleTextColor">@color/bo4_accent_gold</item>
     </style>
+
+    <style name="Widget.BOF4.Dialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
+        <item name="colorSurface">@color/bo4_background_light</item>
+        <item name="colorPrimary">@color/bo4_accent_gold</item>
+        <item name="colorOnSurface">@color/bo4_accent_gray</item>
+        <item name="android:textColor">@color/bo4_accent_gray</item>
+    </style>
 </resources>
