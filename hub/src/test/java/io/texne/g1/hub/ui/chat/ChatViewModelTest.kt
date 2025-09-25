@@ -4,6 +4,7 @@ import io.mockk.MockKAnnotations
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.verify
 import io.mockk.impl.annotations.MockK
 import io.texne.g1.hub.MainDispatcherRule
 import io.texne.g1.hub.ai.ChatGptRepository
@@ -15,6 +16,10 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class ChatViewModelTest {
 
@@ -103,5 +108,85 @@ class ChatViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 0) { serviceRepository.displayCenteredPageOnConnectedGlasses(any(), any()) }
+    }
+
+    @Test
+    fun `refreshConnection triggers repository scan`() = runTest {
+        val viewModel = ChatViewModel(chatRepository, serviceRepository)
+
+        viewModel.refreshConnection()
+
+        verify(exactly = 1) { serviceRepository.startLooking() }
+        val diagnostic = viewModel.state.value.diagnosticMessage
+        assertNotNull(diagnostic)
+        assertFalse(diagnostic.isError)
+        assertEquals("Refreshing glasses connection…", diagnostic.text)
+    }
+
+    @Test
+    fun `sendHudTestMessage emits success diagnostic`() = runTest {
+        val viewModel = ChatViewModel(chatRepository, serviceRepository)
+        coEvery { serviceRepository.displayCenteredOnConnectedGlasses(any(), any()) } returns true
+
+        viewModel.sendHudTestMessage()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            serviceRepository.displayCenteredOnConnectedGlasses(
+                match { pages ->
+                    pages.size == 1 && pages.first().contains("Connection test")
+                },
+                any()
+            )
+        }
+        val diagnostic = viewModel.state.value.diagnosticMessage
+        assertNotNull(diagnostic)
+        assertFalse(diagnostic.isError)
+        assertTrue(diagnostic.text.contains("test message", ignoreCase = true))
+    }
+
+    @Test
+    fun `sendHudTestMessage emits failure diagnostic when display fails`() = runTest {
+        val viewModel = ChatViewModel(chatRepository, serviceRepository)
+        coEvery { serviceRepository.displayCenteredOnConnectedGlasses(any(), any()) } returns false
+
+        viewModel.sendHudTestMessage()
+        advanceUntilIdle()
+
+        val diagnostic = viewModel.state.value.diagnosticMessage
+        assertNotNull(diagnostic)
+        assertTrue(diagnostic.isError)
+        assertTrue(diagnostic.text.contains("couldn't", ignoreCase = true))
+        assertEquals(ChatViewModel.HudStatus.DisplayFailed, viewModel.state.value.hudStatus)
+    }
+
+    @Test
+    fun `testChatGpt emits success diagnostic`() = runTest {
+        val viewModel = ChatViewModel(chatRepository, serviceRepository)
+        coEvery { chatRepository.requestChatCompletion(any(), any()) } returns Result.success("PONG")
+
+        viewModel.testChatGpt()
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { chatRepository.requestChatCompletion(any(), any()) }
+        val diagnostic = viewModel.state.value.diagnosticMessage
+        assertNotNull(diagnostic)
+        assertFalse(diagnostic.isError)
+        assertTrue(diagnostic.text.contains("PONG", ignoreCase = true))
+        assertFalse(viewModel.state.value.isChatGptTestInProgress)
+    }
+
+    @Test
+    fun `testChatGpt emits error diagnostic when request fails`() = runTest {
+        val viewModel = ChatViewModel(chatRepository, serviceRepository)
+        coEvery { chatRepository.requestChatCompletion(any(), any()) } returns Result.failure(Exception("boom"))
+
+        viewModel.testChatGpt()
+        advanceUntilIdle()
+
+        val diagnostic = viewModel.state.value.diagnosticMessage
+        assertNotNull(diagnostic)
+        assertTrue(diagnostic.isError)
+        assertTrue(diagnostic.text.contains("boom"))
     }
 }

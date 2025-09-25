@@ -38,6 +38,11 @@ class ChatViewModel @Inject constructor(
         data object DisplayFailed : HudStatus
     }
 
+    data class DiagnosticMessage(
+        val text: String,
+        val isError: Boolean
+    )
+
     data class State(
         val availablePersonas: List<ChatPersona> = ChatPersonas.all,
         val selectedPersona: ChatPersona = ChatPersonas.Ershin,
@@ -45,7 +50,10 @@ class ChatViewModel @Inject constructor(
         val isSending: Boolean = false,
         val apiKeyAvailable: Boolean = false,
         val errorMessage: String? = null,
-        val hudStatus: HudStatus = HudStatus.Idle
+        val hudStatus: HudStatus = HudStatus.Idle,
+        val isHudTestInProgress: Boolean = false,
+        val isChatGptTestInProgress: Boolean = false,
+        val diagnosticMessage: DiagnosticMessage? = null
     )
 
     private val _state = MutableStateFlow(State())
@@ -130,6 +138,119 @@ class ChatViewModel @Inject constructor(
 
     fun clearHudStatus() {
         _state.update { it.copy(hudStatus = HudStatus.Idle) }
+    }
+
+    fun clearDiagnosticMessage() {
+        _state.update { it.copy(diagnosticMessage = null) }
+    }
+
+    fun refreshConnection() {
+        serviceRepository.startLooking()
+        _state.update { state ->
+            state.copy(
+                diagnosticMessage = DiagnosticMessage(
+                    text = "Refreshing glasses connection…",
+                    isError = false
+                )
+            )
+        }
+    }
+
+    fun sendHudTestMessage() {
+        if (_state.value.isHudTestInProgress) {
+            return
+        }
+
+        _state.update { state ->
+            state.copy(
+                isHudTestInProgress = true,
+                diagnosticMessage = null
+            )
+        }
+
+        viewModelScope.launch {
+            val success = serviceRepository.displayCenteredOnConnectedGlasses(
+                listOf(
+                    listOf("ChatGPT Assistant", "Connection test")
+                )
+            )
+            val diagnostic = if (success) {
+                DiagnosticMessage(
+                    text = "Sent a test message to the glasses.",
+                    isError = false
+                )
+            } else {
+                DiagnosticMessage(
+                    text = "Couldn't send the test message to the glasses.",
+                    isError = true
+                )
+            }
+            _state.update { state ->
+                state.copy(
+                    isHudTestInProgress = false,
+                    diagnosticMessage = diagnostic,
+                    hudStatus = if (success) state.hudStatus else HudStatus.DisplayFailed
+                )
+            }
+        }
+    }
+
+    fun testChatGpt() {
+        val currentState = _state.value
+        if (currentState.isChatGptTestInProgress || currentState.isSending) {
+            return
+        }
+
+        if (!currentState.apiKeyAvailable) {
+            _state.update { state ->
+                state.copy(
+                    diagnosticMessage = DiagnosticMessage(
+                        text = "Add your OpenAI API key in Settings to test ChatGPT.",
+                        isError = true
+                    )
+                )
+            }
+            return
+        }
+
+        _state.update { state ->
+            state.copy(
+                isChatGptTestInProgress = true,
+                diagnosticMessage = null
+            )
+        }
+
+        val persona = currentState.selectedPersona
+        viewModelScope.launch {
+            val request = listOf(
+                ChatMessageData(
+                    role = "user",
+                    content = "Say \"PONG\" to confirm you're online."
+                )
+            )
+            val result = chatRepository.requestChatCompletion(persona, request)
+            val diagnostic = result.fold(
+                onSuccess = { content ->
+                    val snippet = content.trim().ifEmpty { "(empty response)" }
+                    DiagnosticMessage(
+                        text = "ChatGPT responded: ${snippet.take(64)}",
+                        isError = false
+                    )
+                },
+                onFailure = { throwable ->
+                    DiagnosticMessage(
+                        text = throwable.message ?: "ChatGPT test failed",
+                        isError = true
+                    )
+                }
+            )
+            _state.update { state ->
+                state.copy(
+                    isChatGptTestInProgress = false,
+                    diagnosticMessage = diagnostic
+                )
+            }
+        }
     }
 
     private fun handleAssistantResponse(content: String, persona: ChatPersona) {
