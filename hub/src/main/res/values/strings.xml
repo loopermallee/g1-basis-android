@@ -18,4 +18,8 @@
     <string name="crash_copy_success">Crash details copied</string>
     <string name="crash_copy_failed">Unable to access clipboard</string>
     <string name="crash_unknown">Unknown crash</string>
+    <string name="live_data_glasses_label">Glasses: %1$s</string>
+    <string name="live_data_status_label">Status: %1$s</string>
+    <string name="live_data_glasses_unknown">No glasses selected</string>
+    <string name="live_data_status_unknown">Status unavailable</string>
 </resources>

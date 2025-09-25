@@ -24,6 +24,7 @@ android {
     }
     buildFeatures {
         compose = true
+        dataBinding = true
         buildConfig = true
     }
     composeOptions {

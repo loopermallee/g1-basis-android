@@ -5,8 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Box
@@ -17,9 +17,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import dagger.hilt.android.AndroidEntryPoint
+import io.texne.g1.hub.databinding.ActivityMainBinding
 import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.ui.ApplicationFrame
+import io.texne.g1.hub.ui.ApplicationViewModel
 import io.texne.g1.hub.ui.theme.G1HubTheme
 import javax.inject.Inject
 
@@ -28,6 +31,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var repository: Repository
+
+    private lateinit var binding: ActivityMainBinding
+    private val viewModel: ApplicationViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,7 +45,13 @@ class MainActivity : ComponentActivity() {
         }
 
         enableEdgeToEdge()
-        setContent {
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        binding.lifecycleOwner = this
+        binding.viewModel = viewModel
+
+        binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        binding.composeView.setContent {
             G1HubTheme {
                 val snackbarHostState = remember { SnackbarHostState() }
                 Scaffold(
