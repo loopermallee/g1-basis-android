@@ -145,7 +145,7 @@ class ApplicationViewModel @Inject constructor(
 
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
-    private val statusAndError = combine(status.asFlow(), _errorMessage.asFlow()) { statusText, errorText ->
+    private val statusAndError = combine(_status.asFlow(), _errorMessage.asFlow()) { statusText, errorText ->
         statusText.takeUnless { it.isBlank() } to errorText
     }
 
@@ -314,7 +314,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun glassesName(id: String): String {
-        val liveDataName = glassesList.value
+        val liveDataName = _glassesList.value
             ?.firstOrNull { it.id == id }
             ?.name
             ?.takeIf { it.isNotBlank() }
