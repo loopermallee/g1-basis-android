@@ -1,12 +1,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.BreathOfFire4" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Background -->
-        <item name="colorBackground">@color/bo4_background_light</item>
-        <item name="android:windowBackground">@color/bo4_background_light</item>
-        <item name="android:colorBackground">@color/bo4_background_light</item>
+        <item name="colorBackground">@color/bof4_background</item>
+        <item name="android:windowBackground">@color/bof4_background</item>
+        <item name="android:colorBackground">@color/bof4_background</item>
         <!-- Accent colors -->
-        <item name="colorPrimary">@color/bo4_accent_teal</item>
-        <item name="colorSecondary">@color/bo4_accent_gold</item>
+        <item name="colorPrimary">@color/bof4_primary</item>
+        <item name="colorSecondary">@color/bof4_secondary</item>
         <item name="colorOnBackground">@color/bo4_accent_gray</item>
         <item name="colorOnSurface">@color/bo4_accent_gray</item>
         <item name="android:statusBarColor">@color/bo4_accent_teal</item>
