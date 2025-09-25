@@ -128,7 +128,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiMessages.collect { message ->
+                viewModel.uiMessages.collect { message: ApplicationViewModel.UiMessage ->
                     val text = when (message) {
                         is ApplicationViewModel.UiMessage.AutoConnectTriggered ->
                             getString(R.string.auto_connect_triggered, message.glassesName)
