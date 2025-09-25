@@ -3,8 +3,8 @@
     <style name="Widget.BOF4.Button" parent="Widget.Material3.Button">
         <item name="backgroundTint">@color/bo4_accent_teal</item>
         <item name="rippleColor">@color/bo4_accent_gold</item>
-        <item name="android:textColor">@android:color/white</item>
         <item name="cornerRadius">12dp</item>
+        <item name="android:textColor">@android:color/white</item>
     </style>
 
     <style name="Widget.BOF4.CardView" parent="Widget.MaterialComponents.CardView">
