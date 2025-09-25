@@ -65,12 +65,13 @@ class MainActivity : ComponentActivity() {
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // keep existing permission handling logic
-        if (requestCode != REQUEST_CODE_BLUETOOTH) {
-            return
-        }
 
-        if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+        val bluetoothPermissionsGranted =
+            requestCode == REQUEST_CODE_BLUETOOTH &&
+                grantResults.isNotEmpty() &&
+                grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+
+        if (bluetoothPermissionsGranted) {
             repository.bindService()
         }
     }
