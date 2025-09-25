@@ -3,6 +3,7 @@
         <!-- Background -->
         <item name="colorBackground">@color/bo4_background_light</item>
         <item name="android:windowBackground">@color/bo4_background_light</item>
+        <item name="android:colorBackground">@color/bo4_background_light</item>
         <!-- Accent colors -->
         <item name="colorPrimary">@color/bo4_accent_teal</item>
         <item name="colorSecondary">@color/bo4_accent_gold</item>
