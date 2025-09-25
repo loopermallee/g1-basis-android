@@ -13,4 +13,11 @@
         <item name="strokeWidth">1dp</item>
         <item name="cardElevation">2dp</item>
     </style>
+
+    <style name="Widget.BOF4.Toolbar" parent="Widget.MaterialComponents.Toolbar">
+        <item name="android:background">@color/bo4_accent_teal</item>
+        <item name="backgroundTint">@color/bo4_accent_teal</item>
+        <item name="titleTextColor">@color/bo4_background_light</item>
+        <item name="subtitleTextColor">@color/bo4_accent_gold</item>
+    </style>
 </resources>
