@@ -143,10 +143,21 @@ class ApplicationViewModel @Inject constructor(
         retryCountdowns,
         retryCounts,
         statusAndError,
-        telemetryLogs
-    ) { serviceState, section, retries, retryStats, statusAndErrorPair, logs ->
+        telemetryLogs,
+        ::buildState
+    ).stateIn(viewModelScope, SharingStarted.Lazily, State())
+
+    @Suppress("UNCHECKED_CAST")
+    private fun buildState(values: Array<Any?>): State {
+        val serviceState = values[0] as? Repository.ServiceSnapshot
+        val section = values[1] as? AppSection ?: AppSection.GLASSES
+        val retries = values[2] as? Map<String, RetryCountdown> ?: emptyMap()
+        val retryStats = values[3] as? Map<String, Int> ?: emptyMap()
+        val statusAndErrorPair = values[4] as? Pair<String?, String?> ?: (null to null)
+        val logs = values[5] as? List<TelemetryLogEntry> ?: emptyList()
         val (statusText, errorText) = statusAndErrorPair
-        State(
+
+        return State(
             connectedGlasses = serviceState?.glasses?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED },
             error = serviceState?.status == ServiceStatus.ERROR,
             scanning = serviceState?.status == ServiceStatus.LOOKING,
@@ -178,7 +189,7 @@ class ApplicationViewModel @Inject constructor(
             statusMessage = statusText,
             errorMessage = errorText
         )
-    }.stateIn(viewModelScope, SharingStarted.Lazily, State())
+    }
 
     fun scan() {
         viewModelScope.launch {
