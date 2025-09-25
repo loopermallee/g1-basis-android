@@ -41,6 +41,7 @@ class ApplicationViewModel @Inject constructor(
         private const val STATUS_LOOKING = "Looking for glasses…"
         private const val STATUS_CONNECTED = "Connected"
         private const val STATUS_TRY_BONDED = "Trying bonded connect…"
+        private const val STATUS_DISCONNECTED = "Disconnected"
         private const val PERMISSION_MESSAGE = "Bluetooth permission is required. Please allow 'Nearby devices'."
         private const val FAILURE_MESSAGE = "Couldn’t find/connect to glasses.\nTips: Unfold glasses, close the Even app (MentraOS), toggle Bluetooth, and retry."
         private const val RETRY_DELAY_SECONDS = 10
@@ -105,14 +106,17 @@ class ApplicationViewModel @Inject constructor(
         var retryCount: Int = 0
     )
 
-    private val _glasses = MutableLiveData<List<GlassesSnapshot>?>(emptyList())
-    val glasses: LiveData<List<GlassesSnapshot>?> get() = _glasses
+    private val _glasses = MutableLiveData("")
+    val glasses: LiveData<String> get() = _glasses
 
-    private val _status = MutableLiveData<String?>("Disconnected")
-    val status: LiveData<String?> get() = _status
+    private val _status = MutableLiveData(STATUS_DISCONNECTED)
+    val status: LiveData<String> get() = _status
 
     private val _errorMessage = MutableLiveData<String?>(null)
     val errorMessage: LiveData<String?> get() = _errorMessage
+
+    private val _glassesList = MutableLiveData<List<GlassesSnapshot>?>(emptyList())
+    val glassesList: LiveData<List<GlassesSnapshot>?> get() = _glassesList
 
     private val retryCountdowns = MutableStateFlow<Map<String, RetryCountdown>>(emptyMap())
     private val retryJobs = mutableMapOf<String, Job>()
@@ -142,7 +146,7 @@ class ApplicationViewModel @Inject constructor(
     private val activationPreference = assistantPreferences.observeActivationGesture()
 
     private val statusAndError = combine(status.asFlow(), _errorMessage.asFlow()) { statusText, errorText ->
-        statusText to errorText
+        statusText.takeUnless { it.isBlank() } to errorText
     }
 
     val state = combine(
@@ -310,7 +314,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun glassesName(id: String): String {
-        val liveDataName = glasses.value
+        val liveDataName = glassesList.value
             ?.firstOrNull { it.id == id }
             ?.name
             ?.takeIf { it.isNotBlank() }
@@ -571,8 +575,9 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun showConnectionFailure() {
-        _status.postValue(null)
+        _status.postValue(STATUS_DISCONNECTED)
         _errorMessage.postValue(FAILURE_MESSAGE)
+        _glasses.postValue("")
         Log.i(TAG, "TIP_SHOWN=CLOSE_EVEN")
         notify(UiMessage.Snackbar(FAILURE_MESSAGE))
         logTelemetry(
@@ -582,8 +587,9 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun showPermissionError() {
-        _status.postValue(null)
+        _status.postValue(STATUS_DISCONNECTED)
         _errorMessage.postValue(PERMISSION_MESSAGE)
+        _glasses.postValue("")
         notify(UiMessage.Snackbar(PERMISSION_MESSAGE))
         logTelemetry(
             TelemetryLogType.ERROR,
@@ -592,7 +598,7 @@ class ApplicationViewModel @Inject constructor(
     }
 
     private fun clearStatus() {
-        _status.postValue(null)
+        _status.postValue(STATUS_DISCONNECTED)
         _errorMessage.postValue(null)
     }
 
@@ -631,15 +637,29 @@ class ApplicationViewModel @Inject constructor(
     }
 
     init {
-        _glasses.postValue(emptyList())
-        _status.postValue("Disconnected")
-        _errorMessage.postValue(null)
+        _glasses.value = ""
+        _status.value = STATUS_DISCONNECTED
+        _errorMessage.value = null
+        _glassesList.value = emptyList()
 
         viewModelScope.launch {
             repository.getServiceStateFlow().collect { serviceState ->
                 val previousSnapshot = latestServiceSnapshot
                 latestServiceSnapshot = serviceState
-                _glasses.postValue(serviceState?.glasses)
+                _glassesList.postValue(serviceState?.glasses)
+                val connectedName = serviceState?.glasses
+                    ?.firstOrNull { it.status == G1ServiceCommon.GlassesStatus.CONNECTED }
+                    ?.name
+                    ?.takeIf { it.isNotBlank() }
+                _glasses.postValue(connectedName ?: "")
+                if (connectedName != null) {
+                    _status.postValue(STATUS_CONNECTED)
+                } else if (
+                    serviceState?.status == ServiceStatus.READY &&
+                    _status.value == STATUS_CONNECTED
+                ) {
+                    _status.postValue(STATUS_DISCONNECTED)
+                }
                 handleTelemetrySnapshotChange(previousSnapshot, serviceState)
                 val glasses = serviceState?.glasses.orEmpty()
                 val availableIds = glasses.map { it.id }.toSet()
