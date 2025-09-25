@@ -4,6 +4,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,8 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import io.texne.g1.hub.ai.ChatPersona
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.texne.g1.hub.ai.ChatPersona
 import io.texne.g1.hub.todo.TodoHudFormatter
 import io.texne.g1.hub.todo.TodoHudFormatter.DisplayMode
 import io.texne.g1.hub.ui.todo.TodoViewModel
@@ -74,6 +75,10 @@ fun ChatScreen(
         onNavigateToSettings = onNavigateToSettings,
         onDismissError = viewModel::clearError,
         onHudStatusConsumed = viewModel::clearHudStatus,
+        onRefreshConnection = viewModel::refreshConnection,
+        onSendHudTest = viewModel::sendHudTestMessage,
+        onTestChatGpt = viewModel::testChatGpt,
+        onDismissDiagnostic = viewModel::clearDiagnosticMessage,
         onToggleTask = todoViewModel::toggleTask,
         onMoveTaskUp = todoViewModel::moveTaskUp,
         onMoveTaskDown = todoViewModel::moveTaskDown,
@@ -96,6 +101,10 @@ private fun ChatContent(
     onNavigateToSettings: () -> Unit,
     onDismissError: () -> Unit,
     onHudStatusConsumed: () -> Unit,
+    onRefreshConnection: () -> Unit,
+    onSendHudTest: () -> Unit,
+    onTestChatGpt: () -> Unit,
+    onDismissDiagnostic: () -> Unit,
     onToggleTask: (String) -> Unit,
     onMoveTaskUp: (String) -> Unit,
     onMoveTaskDown: (String) -> Unit,
@@ -135,7 +144,19 @@ private fun ChatContent(
             fontWeight = FontWeight.Bold
         )
 
-        ConnectionStatus(connectedGlassesName)
+        ConnectionStatus(
+            connectedGlassesName = connectedGlassesName,
+            isHudTestInProgress = state.isHudTestInProgress,
+            isChatGptTestInProgress = state.isChatGptTestInProgress,
+            canTestChatGpt = state.apiKeyAvailable && !state.isSending,
+            onRefresh = onRefreshConnection,
+            onSendHudTest = onSendHudTest,
+            onTestChatGpt = onTestChatGpt
+        )
+
+        state.diagnosticMessage?.let {
+            DiagnosticMessageCard(message = it, onDismiss = onDismissDiagnostic)
+        }
 
         if (!state.apiKeyAvailable) {
             ApiKeyWarningCard(onNavigateToSettings = onNavigateToSettings)
@@ -460,7 +481,15 @@ private fun TodoTaskRow(
 }
 
 @Composable
-private fun ConnectionStatus(connectedGlassesName: String?) {
+private fun ConnectionStatus(
+    connectedGlassesName: String?,
+    isHudTestInProgress: Boolean,
+    isChatGptTestInProgress: Boolean,
+    canTestChatGpt: Boolean,
+    onRefresh: () -> Unit,
+    onSendHudTest: () -> Unit,
+    onTestChatGpt: () -> Unit
+) {
     val text = connectedGlassesName?.let { "Connected to $it" }
         ?: "No glasses connected. Responses will not appear on the HUD."
     val color = if (connectedGlassesName != null) {
@@ -468,7 +497,69 @@ private fun ConnectionStatus(connectedGlassesName: String?) {
     } else {
         MaterialTheme.colorScheme.error
     }
-    Text(text = text, color = color, style = MaterialTheme.typography.bodyMedium)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(text = text, color = color, style = MaterialTheme.typography.bodyMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            TextButton(onClick = onRefresh) {
+                Text("Refresh status")
+            }
+            TextButton(
+                onClick = onSendHudTest,
+                enabled = connectedGlassesName != null && !isHudTestInProgress
+            ) {
+                if (isHudTestInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("Send HUD test")
+            }
+            TextButton(
+                onClick = onTestChatGpt,
+                enabled = canTestChatGpt && !isChatGptTestInProgress
+            ) {
+                if (isChatGptTestInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text("Test ChatGPT")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticMessageCard(
+    message: ChatViewModel.DiagnosticMessage,
+    onDismiss: () -> Unit
+) {
+    val colors = if (message.isError) {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+    } else {
+        CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    }
+    Card(colors = colors) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = message.text, modifier = Modifier.weight(1f))
+            TextButton(onClick = onDismiss) {
+                Text("Dismiss")
+            }
+        }
+    }
 }
 
 @Composable
