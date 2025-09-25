@@ -139,7 +139,57 @@ class ApplicationViewModel @Inject constructor(
         ::updateState
     ).stateIn(viewModelScope, SharingStarted.Lazily, State())
 
-    private suspend fun updateState(@Suppress("UNUSED_PARAMETER") args: Array<Any?>): State = State()
+    private suspend fun updateState(
+        serviceSnapshot: Repository.ServiceSnapshot?,
+        countdowns: Map<String, RetryCountdown>,
+        counts: Map<String, Int>,
+        logs: List<TelemetryLogEntry>
+    ): State {
+        val glasses = serviceSnapshot?.glasses.orEmpty()
+        val serviceStatus = serviceSnapshot?.status ?: ServiceStatus.READY
+        val connected = glasses.firstOrNull { snapshot ->
+            snapshot.status == G1ServiceCommon.GlassesStatus.CONNECTED
+        }
+
+        val currentIds = glasses.map { it.id }.toSet()
+        telemetryTimestamps.keys.retainAll(currentIds)
+
+        val telemetryEntries = glasses.map { snapshot ->
+            TelemetryEntry(
+                id = snapshot.id,
+                name = snapshot.name,
+                status = snapshot.status,
+                leftStatus = snapshot.left.status,
+                rightStatus = snapshot.right.status,
+                batteryPercentage = snapshot.batteryPercentage,
+                leftBatteryPercentage = snapshot.left.batteryPercentage,
+                rightBatteryPercentage = snapshot.right.batteryPercentage,
+                signalStrength = snapshot.signalStrength,
+                rssi = snapshot.rssi,
+                retryCount = counts[snapshot.id] ?: 0,
+                lastUpdatedAt = telemetryTimestamps[snapshot.id] ?: System.currentTimeMillis()
+            )
+        }.sortedBy { entry -> entry.name.ifBlank { entry.id } }
+
+        val errorMessage = when (serviceStatus) {
+            ServiceStatus.PERMISSION_REQUIRED -> PERMISSION_MESSAGE
+            ServiceStatus.ERROR -> FAILURE_MESSAGE
+            else -> null
+        }
+
+        return State(
+            connectedGlasses = connected,
+            error = serviceStatus == ServiceStatus.ERROR,
+            scanning = serviceStatus == ServiceStatus.LOOKING,
+            serviceStatus = serviceStatus,
+            glasses = glasses,
+            retryCountdowns = countdowns,
+            retryCounts = counts,
+            telemetryEntries = telemetryEntries,
+            telemetryLogs = logs,
+            errorMessage = errorMessage
+        )
+    }
 
     fun scan() {
         viewModelScope.launch {
