@@ -1,120 +1,128 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="12dp"
-    android:background="@drawable/bg_panel"
-    android:foreground="?attr/selectableItemBackground"
-    android:clickable="true"
-    android:focusable="true"
-    android:layout_marginBottom="8dp"
+    android:layout_marginStart="4dp"
     android:layout_marginTop="8dp"
     android:layout_marginEnd="4dp"
-    android:layout_marginStart="4dp"
-    android:elevation="1dp">
-
-    <TextView
-        android:id="@+id/textGlassesName"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurface"
-        android:text="--" />
-
-    <TextView
-        android:id="@+id/textGlassesStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurface"
-        android:text="@string/glasses_status_format" />
-
-    <TextView
-        android:id="@+id/textGlassesBattery"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:text="@string/glasses_battery_format" />
-
-    <TextView
-        android:id="@+id/textGlassesSignal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:text="@string/glasses_signal_format" />
-
-    <TextView
-        android:id="@+id/textGlassesRssi"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:text="@string/glasses_rssi_format" />
-
-    <TextView
-        android:id="@+id/textRetryCount"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:text="@string/glasses_retry_count" />
-
-    <TextView
-        android:id="@+id/textRetryCountdown"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-        android:fontFamily="serif"
-        android:textColor="?attr/colorOnSurfaceVariant"
-        android:visibility="gone"
-        android:text="@string/glasses_retry_countdown" />
+    android:layout_marginBottom="8dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground"
+    app:cardBackgroundColor="@color/kilrogg_surface_variant"
+    app:cardElevation="2dp"
+    app:contentPadding="12dp"
+    app:strokeColor="@color/kilrogg_outline"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="end"
-        android:layout_marginTop="8dp">
+        android:orientation="vertical">
 
-        <Button
-            android:id="@+id/buttonRetryNow"
-            style="@style/Widget.EyeOfKilrogg.Button.Outlined"
-            android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/textGlassesName"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/glasses_button_retry_now"
-            android:visibility="gone" />
+            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurface"
+            android:text="--" />
 
-        <Button
-            android:id="@+id/buttonCancelRetry"
-            style="@style/Widget.EyeOfKilrogg.Button.Outlined"
-            android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/textGlassesStatus"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="@string/glasses_button_cancel_retry"
-            android:visibility="gone" />
+            android:layout_marginTop="4dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurface"
+            android:text="@string/glasses_status_format" />
 
-        <Button
-            android:id="@+id/buttonConnect"
-            style="@style/Widget.EyeOfKilrogg.Button"
-            android:layout_width="wrap_content"
+        <TextView
+            android:id="@+id/textGlassesBattery"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="@string/glasses_button_connect" />
+            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/glasses_battery_format" />
+
+        <TextView
+            android:id="@+id/textGlassesSignal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/glasses_signal_format" />
+
+        <TextView
+            android:id="@+id/textGlassesRssi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/glasses_rssi_format" />
+
+        <TextView
+            android:id="@+id/textRetryCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:text="@string/glasses_retry_count" />
+
+        <TextView
+            android:id="@+id/textRetryCountdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:fontFamily="serif"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:visibility="gone"
+            android:text="@string/glasses_retry_countdown" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="end"
+            android:layout_marginTop="8dp">
+
+            <Button
+                android:id="@+id/buttonRetryNow"
+                style="@style/Widget.EyeOfKilrogg.Button.Outlined"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/glasses_button_retry_now"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/buttonCancelRetry"
+                style="@style/Widget.EyeOfKilrogg.Button.Outlined"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/glasses_button_cancel_retry"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/buttonConnect"
+                style="@style/Widget.EyeOfKilrogg.Button"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/glasses_button_connect" />
+        </LinearLayout>
     </LinearLayout>
 
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

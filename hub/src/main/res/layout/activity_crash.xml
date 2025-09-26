@@ -34,69 +34,77 @@
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/crash_message" />
 
-    <ScrollView
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginTop="16dp"
         android:layout_weight="1"
-        android:background="@drawable/bg_panel"
-        android:padding="16dp">
+        app:cardBackgroundColor="@color/kilrogg_surface_variant"
+        app:cardElevation="2dp"
+        app:strokeColor="@color/kilrogg_outline"
+        app:strokeWidth="1dp">
 
-        <LinearLayout
+        <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:divider="@android:color/transparent"
-            android:showDividers="middle">
+            android:layout_height="match_parent"
+            android:padding="16dp">
 
-            <TextView
-                android:id="@+id/textCrashThread"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                android:fontFamily="serif"
-                android:textColor="?attr/colorOnSurface"
-                android:visibility="gone" />
+                android:orientation="vertical"
+                android:divider="@android:color/transparent"
+                android:showDividers="middle">
 
-            <TextView
-                android:id="@+id/textCrashCause"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                android:fontFamily="serif"
-                android:textColor="?attr/colorOnSurface"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/textCrashThread"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:fontFamily="serif"
+                    android:textColor="?attr/colorOnSurface"
+                    android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/textCrashStacktraceLabel"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                android:fontFamily="serif"
-                android:textColor="?attr/colorOnSurface"
-                android:visibility="gone"
-                android:text="@string/crash_stacktrace_label" />
+                <TextView
+                    android:id="@+id/textCrashCause"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:fontFamily="serif"
+                    android:textColor="?attr/colorOnSurface"
+                    android:visibility="gone" />
 
-            <TextView
-                android:id="@+id/textCrashStacktrace"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:visibility="gone" />
+                <TextView
+                    android:id="@+id/textCrashStacktraceLabel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:fontFamily="serif"
+                    android:textColor="?attr/colorOnSurface"
+                    android:visibility="gone"
+                    android:text="@string/crash_stacktrace_label" />
 
-            <TextView
-                android:id="@+id/textCrashNoDetails"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-                android:fontFamily="serif"
-                android:textColor="?attr/colorOnSurface"
-                android:text="@string/crash_no_details"
-                android:visibility="gone" />
-        </LinearLayout>
-    </ScrollView>
+                <TextView
+                    android:id="@+id/textCrashStacktrace"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/textCrashNoDetails"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                    android:fontFamily="serif"
+                    android:textColor="?attr/colorOnSurface"
+                    android:text="@string/crash_no_details"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </ScrollView>
+    </com.google.android.material.card.MaterialCardView>
 
     <LinearLayout
         android:layout_width="match_parent"
