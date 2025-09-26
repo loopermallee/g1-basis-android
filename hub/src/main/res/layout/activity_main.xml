@@ -80,7 +80,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
-        android:textColor="@color/telemetry_error"
+        android:textColor="?attr/colorError"
         android:visibility="gone"
         android:text="" />
 
