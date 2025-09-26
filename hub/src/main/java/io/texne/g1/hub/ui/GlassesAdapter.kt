@@ -68,7 +68,7 @@ class GlassesAdapter(
             )
 
             val signal = snapshot.signalStrength?.toString()
-                ?: context.getString(R.string.telemetry_signal_unknown)
+                ?: context.getString(R.string.glasses_signal_unknown)
             binding.textGlassesSignal.text = context.getString(
                 R.string.glasses_signal_format,
                 signal

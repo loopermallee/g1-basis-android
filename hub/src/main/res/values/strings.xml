@@ -28,10 +28,6 @@
     <string name="action_bonded_connect">Bonded connect</string>
     <string name="header_glasses">Available glasses</string>
     <string name="glasses_empty">No glasses discovered.</string>
-    <string name="header_telemetry">Live telemetry</string>
-    <string name="telemetry_entries_empty">No telemetry available.</string>
-    <string name="header_telemetry_log">Telemetry log</string>
-    <string name="telemetry_logs_empty">No telemetry events recorded yet.</string>
     <string name="glasses_status_format">Status: %1$s</string>
     <string name="glasses_battery_format">Battery: %1$d%% (L %2$d%% / R %3$d%%)</string>
     <string name="glasses_signal_format">Signal: %1$s</string>
@@ -42,14 +38,7 @@
     <string name="glasses_button_cancel_retry">Cancel</string>
     <string name="glasses_button_connect">Connect</string>
     <string name="glasses_button_disconnect">Disconnect</string>
-    <string name="telemetry_status_format">Status: %1$s</string>
-    <string name="telemetry_eye_status_format">%1$s eye: %2$s</string>
-    <string name="telemetry_signal_detail">Signal: %1$s  RSSI: %2$s</string>
-    <string name="telemetry_updated_format">Updated %1$s</string>
-    <string name="telemetry_retry_count">Retries: %1$d</string>
-    <string name="telemetry_signal_unknown">Unknown</string>
-    <string name="label_left_eye">Left</string>
-    <string name="label_right_eye">Right</string>
+    <string name="glasses_signal_unknown">Unknown</string>
     <string name="auto_connect_triggered">Auto-connecting to %1$s</string>
     <string name="auto_connect_failed">Auto-connect failed for %1$s</string>
     <string name="status_ready">Ready</string>
