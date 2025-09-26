@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.util.Log
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1ServiceState
 import io.texne.g1.basis.service.protocol.IG1ServiceClient
@@ -19,6 +20,7 @@ import kotlin.coroutines.suspendCoroutine
 class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1ServiceClient>(context) {
 
     companion object {
+        private const val TAG = "G1ServiceClient"
         fun open(context: Context): G1ServiceClient? {
             val client = G1ServiceClient(context)
             client.populateBondedGlasses(context)
@@ -238,7 +240,13 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
 
     override suspend fun sendTextPage(id: String, page: List<String>) =
         suspendCoroutine<Boolean> { continuation ->
-            service?.displayTextPage(
+            val target = service
+            if (target == null) {
+                Log.w(TAG, "displayTextPage($id) requested before service connected")
+                continuation.resume(false)
+                return@suspendCoroutine
+            }
+            target.displayTextPage(
                 id,
                 page.toTypedArray(),
                 object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
@@ -249,7 +257,13 @@ class G1ServiceClient private constructor(context: Context): G1ServiceCommon<IG1
         }
 
     override suspend fun stopDisplaying(id: String) = suspendCoroutine<Boolean> { continuation ->
-        service?.stopDisplaying(
+        val target = service
+        if (target == null) {
+            Log.w(TAG, "stopDisplaying($id) requested before service connected")
+            continuation.resume(false)
+            return@suspendCoroutine
+        }
+        target.stopDisplaying(
             id,
             object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
                 override fun onResult(success: Boolean) {
