@@ -1,9 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <style name="Theme.BreathOfFire4" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.BreathOfFire4" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorBackground">@color/bo4_background_light</item>
         <item name="colorPrimary">@color/bo4_accent_teal</item>
         <item name="colorSecondary">@color/bo4_accent_gold</item>
         <item name="colorOnBackground">@color/bo4_accent_gray</item>
+        <item name="colorSurface">@color/bo4_background_light</item>
+        <item name="colorOnSurface">@color/bo4_accent_gray</item>
+        <item name="colorOutline">@color/bo4_accent_gray</item>
+        <item name="bo4CardBackgroundColor">@color/bo4_background_light</item>
+        <item name="bo4CardElevation">2dp</item>
     </style>
 
     <!-- Base application theme. -->
@@ -17,7 +22,7 @@
 
     <style name="Widget.EyeOfKilrogg.Button" parent="@style/Widget.BOF4.Button" />
 
-    <style name="Widget.EyeOfKilrogg.Button.Outlined" parent="@style/Widget.Material3.Button.OutlinedButton">
+    <style name="Widget.EyeOfKilrogg.Button.Outlined" parent="@style/Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:fontFamily">serif</item>
         <item name="fontFamily">serif</item>
         <item name="android:textAllCaps">false</item>

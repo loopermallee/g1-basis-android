@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Widget.BOF4.Button" parent="@style/Widget.Material3.Button">
+    <style name="Widget.BOF4.Button" parent="@style/Widget.MaterialComponents.Button">
         <item name="backgroundTint">@color/bo4_accent_teal</item>
         <item name="rippleColor">@color/bo4_accent_gold</item>
         <item name="cornerRadius">12dp</item>
@@ -8,22 +8,22 @@
     </style>
 
     <style name="Widget.BOF4.CardView" parent="@style/Widget.MaterialComponents.CardView">
-        <item name="android:cardBackgroundColor">@color/bo4_background_light</item>
-        <item name="cardBackgroundColor">@color/bo4_background_light</item>
+        <item name="android:cardBackgroundColor">?attr/bo4CardBackgroundColor</item>
+        <item name="cardBackgroundColor">?attr/bo4CardBackgroundColor</item>
         <item name="strokeColor">@color/bo4_accent_gray</item>
         <item name="strokeWidth">1dp</item>
-        <item name="android:cardElevation">2dp</item>
-        <item name="cardElevation">2dp</item>
+        <item name="android:cardElevation">?attr/bo4CardElevation</item>
+        <item name="cardElevation">?attr/bo4CardElevation</item>
     </style>
 
-    <style name="Widget.BOF4.Toolbar" parent="@style/Widget.Material3.Toolbar">
+    <style name="Widget.BOF4.Toolbar" parent="@style/Widget.MaterialComponents.Toolbar">
         <item name="android:background">@color/bo4_accent_teal</item>
         <item name="background">@color/bo4_accent_teal</item>
         <item name="titleTextColor">@color/bo4_background_light</item>
         <item name="subtitleTextColor">@color/bo4_accent_gold</item>
     </style>
 
-    <style name="Widget.BOF4.Dialog" parent="@style/ThemeOverlay.Material3.MaterialAlertDialog">
+    <style name="Widget.BOF4.Dialog" parent="@style/ThemeOverlay.MaterialComponents.MaterialAlertDialog">
         <item name="colorSurface">@color/bo4_background_light</item>
         <item name="colorPrimary">@color/bo4_accent_gold</item>
         <item name="android:textColor">@color/bo4_accent_gray</item>
