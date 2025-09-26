@@ -25,8 +25,6 @@ import io.texne.g1.hub.model.Repository
 import io.texne.g1.hub.permissions.PermissionHelper
 import io.texne.g1.hub.ui.ApplicationViewModel
 import io.texne.g1.hub.ui.GlassesAdapter
-import io.texne.g1.hub.ui.TelemetryEntryAdapter
-import io.texne.g1.hub.ui.TelemetryLogAdapter
 import javax.inject.Inject
 import kotlinx.coroutines.launch
 
@@ -57,9 +55,6 @@ class MainActivity : ComponentActivity() {
         }
     })
 
-    private val telemetryEntryAdapter = TelemetryEntryAdapter()
-    private val telemetryLogAdapter = TelemetryLogAdapter()
-
     private var pendingPermissionAction: (() -> Unit)? = null
     private var autoPromptShown = false
     private var serviceBound = false
@@ -87,10 +82,6 @@ class MainActivity : ComponentActivity() {
 
         binding.recyclerGlasses.layoutManager = LinearLayoutManager(this)
         binding.recyclerGlasses.adapter = glassesAdapter
-        binding.recyclerTelemetryEntries.layoutManager = LinearLayoutManager(this)
-        binding.recyclerTelemetryEntries.adapter = telemetryEntryAdapter
-        binding.recyclerTelemetryLogs.layoutManager = LinearLayoutManager(this)
-        binding.recyclerTelemetryLogs.adapter = telemetryLogAdapter
 
         binding.buttonScan.setOnClickListener {
             runWithPermissions("manualScan") { viewModel.scan() }
@@ -199,14 +190,6 @@ class MainActivity : ComponentActivity() {
         glassesAdapter.submitList(items)
         binding.recyclerGlasses.isVisible = items.isNotEmpty()
         binding.textGlassesEmpty.isVisible = items.isEmpty()
-
-        telemetryEntryAdapter.submitList(state.telemetryEntries)
-        binding.recyclerTelemetryEntries.isVisible = state.telemetryEntries.isNotEmpty()
-        binding.textTelemetryEmpty.isVisible = state.telemetryEntries.isEmpty()
-
-        telemetryLogAdapter.submitList(state.telemetryLogs)
-        binding.recyclerTelemetryLogs.isVisible = state.telemetryLogs.isNotEmpty()
-        binding.textTelemetryLogsEmpty.isVisible = state.telemetryLogs.isEmpty()
 
         if (state.serviceStatus == G1ServiceCommon.ServiceStatus.PERMISSION_REQUIRED) {
             if (!autoPromptShown) {
