@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.util.Log
 import io.texne.g1.basis.service.protocol.G1Glasses
 import io.texne.g1.basis.service.protocol.G1GestureEvent
 import io.texne.g1.basis.service.protocol.G1ServiceState
@@ -16,6 +17,7 @@ import kotlin.coroutines.suspendCoroutine
 class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG1Service>(context) {
 
     companion object {
+        private const val TAG = "G1ServiceManager"
         fun open(context: Context): G1ServiceManager? {
             val client = G1ServiceManager(context)
             val intent = Intent("io.texne.g1.basis.service.protocol.IG1Service")
@@ -130,7 +132,13 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
     }
 
     suspend fun connect(id: String) = suspendCoroutine<Boolean> { continuation ->
-        service?.connectGlasses(
+        val target = service
+        if (target == null) {
+            Log.w(TAG, "connect($id) requested before service connected")
+            continuation.resume(false)
+            return@suspendCoroutine
+        }
+        target.connectGlasses(
             id,
             object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
                 override fun onResult(success: Boolean) {
@@ -145,7 +153,13 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
 
     override suspend fun sendTextPage(id: String, page: List<String>) =
         suspendCoroutine<Boolean> { continuation ->
-            service?.displayTextPage(
+            val target = service
+            if (target == null) {
+                Log.w(TAG, "displayTextPage($id) requested before service connected")
+                continuation.resume(false)
+                return@suspendCoroutine
+            }
+            target.displayTextPage(
                 id,
                 page.toTypedArray(),
                 object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
@@ -156,7 +170,13 @@ class G1ServiceManager private constructor(context: Context): G1ServiceCommon<IG
         }
 
     override suspend fun stopDisplaying(id: String) = suspendCoroutine<Boolean> { continuation ->
-        service?.stopDisplaying(
+        val target = service
+        if (target == null) {
+            Log.w(TAG, "stopDisplaying($id) requested before service connected")
+            continuation.resume(false)
+            return@suspendCoroutine
+        }
+        target.stopDisplaying(
             id,
             object : io.texne.g1.basis.service.protocol.OperationCallback.Stub() {
                 override fun onResult(success: Boolean) {
