@@ -9,38 +9,52 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import io.texne.g1.basis.client.G1ServiceCommon
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.LazyThreadSafetyMode
 
 @Singleton
 class AssistantPreferences @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext private val appContext: Context
 ) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val sharedPreferences: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        PREF_NAME,
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    private val sharedPreferences: SharedPreferences by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
 
-    private val activationGestureFlow = MutableStateFlow(loadGesture())
+        EncryptedSharedPreferences.create(
+            appContext,
+            PREF_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
 
-    private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+    private val activationGestureFlow = MutableStateFlow(DEFAULT_GESTURE)
+
+    private val listener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
         if (key == KEY_ACTIVATION_GESTURE) {
-            activationGestureFlow.value = loadGesture()
+            activationGestureFlow.value = loadGesture(prefs)
         }
     }
 
     init {
-        sharedPreferences.registerOnSharedPreferenceChangeListener(listener)
+        scope.launch {
+            val prefs = sharedPreferences
+            activationGestureFlow.value = loadGesture(prefs)
+            withContext(Dispatchers.Main) {
+                prefs.registerOnSharedPreferenceChangeListener(listener)
+            }
+        }
     }
 
     fun observeActivationGesture(): StateFlow<G1ServiceCommon.GestureType> =
@@ -48,14 +62,17 @@ class AssistantPreferences @Inject constructor(
 
     fun currentActivationGesture(): G1ServiceCommon.GestureType = activationGestureFlow.value
 
-    suspend fun setActivationGesture(gesture: G1ServiceCommon.GestureType) = withContext(Dispatchers.IO) {
-        sharedPreferences.edit(commit = true) {
-            putString(KEY_ACTIVATION_GESTURE, gesture.name)
+    suspend fun setActivationGesture(gesture: G1ServiceCommon.GestureType) {
+        withContext(Dispatchers.IO) {
+            sharedPreferences.edit(commit = true) {
+                putString(KEY_ACTIVATION_GESTURE, gesture.name)
+            }
         }
+        activationGestureFlow.value = gesture
     }
 
-    private fun loadGesture(): G1ServiceCommon.GestureType {
-        val stored = sharedPreferences.getString(KEY_ACTIVATION_GESTURE, null)
+    private fun loadGesture(prefs: SharedPreferences): G1ServiceCommon.GestureType {
+        val stored = prefs.getString(KEY_ACTIVATION_GESTURE, null)
         return stored?.let { value ->
             runCatching { G1ServiceCommon.GestureType.valueOf(value) }.getOrNull()
         } ?: DEFAULT_GESTURE

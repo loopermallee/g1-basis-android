@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Eye of Kilrogg</string>
+    <string name="app_name">G1 Hub</string>
     <string name="settings_assistant_activation_title">Assistant activation</string>
     <string name="settings_assistant_activation_description">Choose how to open the assistant from your glasses.</string>
     <string name="settings_assistant_activation_option_off">Off</string>

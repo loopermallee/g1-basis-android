@@ -14,6 +14,7 @@ import io.texne.g1.hub.BuildConfig
 import io.texne.g1.hub.assistant.AssistantActivationGesture
 import io.texne.g1.hub.assistant.AssistantPreferences
 import io.texne.g1.hub.ble.G1Connector
+import io.texne.g1.hub.logging.AppStartupLogger
 import javax.inject.Singleton
 import kotlin.system.exitProcess
 import kotlinx.coroutines.flow.StateFlow
@@ -56,11 +57,17 @@ object GlobalModule {
 @HiltAndroidApp
 class G1HubApplication: Application() {
 
+    @javax.inject.Inject
+    lateinit var startupLogger: AppStartupLogger
+
     override fun onCreate() {
         super.onCreate()
 
+        startupLogger.recordAppLaunched()
+
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            startupLogger.recordUncaughtException(thread, throwable)
             val handled = handleUncaughtException(thread, throwable)
             if (!handled) {
                 previousHandler?.uncaughtException(thread, throwable)
