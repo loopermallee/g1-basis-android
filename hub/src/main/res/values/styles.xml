@@ -8,12 +8,10 @@
     </style>
 
     <style name="Widget.BOF4.CardView" parent="@style/Widget.MaterialComponents.CardView">
-        <item name="android:cardBackgroundColor">?attr/bo4CardBackgroundColor</item>
-        <item name="cardBackgroundColor">?attr/bo4CardBackgroundColor</item>
+        <item name="cardBackgroundColor">@color/colorBackground</item>
         <item name="strokeColor">@color/bo4_accent_gray</item>
         <item name="strokeWidth">1dp</item>
-        <item name="android:cardElevation">?attr/bo4CardElevation</item>
-        <item name="cardElevation">?attr/bo4CardElevation</item>
+        <item name="cardElevation">4dp</item>
     </style>
 
     <style name="Widget.BOF4.Toolbar" parent="@style/Widget.MaterialComponents.Toolbar">
@@ -27,6 +25,5 @@
         <item name="colorSurface">@color/bo4_background_light</item>
         <item name="colorPrimary">@color/bo4_accent_gold</item>
         <item name="android:textColor">@color/bo4_accent_gray</item>
-        <item name="textColor">@color/bo4_accent_gray</item>
     </style>
 </resources>

@@ -7,8 +7,6 @@
         <item name="colorSurface">@color/bo4_background_light</item>
         <item name="colorOnSurface">@color/bo4_accent_gray</item>
         <item name="colorOutline">@color/bo4_accent_gray</item>
-        <item name="bo4CardBackgroundColor">@color/bo4_background_light</item>
-        <item name="bo4CardElevation">2dp</item>
     </style>
 
     <style name="Theme.BreathOfFire4" parent="AppTheme" />
