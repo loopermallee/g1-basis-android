@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -40,7 +41,7 @@ class MainActivity : ComponentActivity() {
 
     private val glassesAdapter = GlassesAdapter(object : GlassesAdapter.GlassesActionListener {
         override fun onConnect(id: String) {
-            runWithPermissions { viewModel.connect(id) }
+            runWithPermissions("glassesConnect:$id") { viewModel.connect(id) }
         }
 
         override fun onDisconnect(id: String) {
@@ -52,7 +53,7 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun onRetryNow(id: String) {
-            runWithPermissions { viewModel.retryNow(id) }
+            runWithPermissions("glassesRetry:$id") { viewModel.retryNow(id) }
         }
     })
 
@@ -61,27 +62,25 @@ class MainActivity : ComponentActivity() {
 
     private var pendingPermissionAction: (() -> Unit)? = null
     private var autoPromptShown = false
+    private var serviceBound = false
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val action = pendingPermissionAction
             pendingPermissionAction = null
             if (result.resultCode == Activity.RESULT_OK) {
+                Log.i(TAG, "Permission helper result OK; running pending action")
+                bindServiceIfPossible("permissionHelperResult")
                 action?.invoke()
             } else {
+                Log.w(TAG, "Permission helper canceled; notifying ViewModel")
                 viewModel.onPermissionDenied()
             }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (hasBluetoothPermissions()) {
-            repository.bindService()
-        } else {
-            requestBluetoothPermissions()
-        }
-
+        Log.i(TAG, "onCreate")
         enableEdgeToEdge()
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -94,10 +93,10 @@ class MainActivity : ComponentActivity() {
         binding.recyclerTelemetryLogs.adapter = telemetryLogAdapter
 
         binding.buttonScan.setOnClickListener {
-            runWithPermissions { viewModel.scan() }
+            runWithPermissions("manualScan") { viewModel.scan() }
         }
         binding.buttonBondedConnect.setOnClickListener {
-            runWithPermissions { viewModel.tryBondedConnect() }
+            runWithPermissions("bondedConnectButton") { viewModel.tryBondedConnect() }
         }
 
         val glassesLabel = if (viewModel.glasses.isBlank()) {
@@ -139,9 +138,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        bindServiceIfPossible("onStart")
+    }
+
     override fun onDestroy() {
         super.onDestroy()
-        repository.unbindService()
+        if (serviceBound) {
+            Log.i(TAG, "Unbinding service in onDestroy")
+            repository.unbindService()
+            serviceBound = false
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -157,7 +165,11 @@ class MainActivity : ComponentActivity() {
                 grantResults.all { it == PackageManager.PERMISSION_GRANTED }
 
         if (bluetoothPermissionsGranted) {
-            repository.bindService()
+            Log.i(TAG, "Bluetooth permissions granted via ActivityCompat; binding service")
+            bindServiceIfPossible("runtimePermissionResult")
+        } else {
+            Log.w(TAG, "Bluetooth permissions denied via ActivityCompat")
+            viewModel.onPermissionDenied()
         }
     }
 
@@ -199,7 +211,7 @@ class MainActivity : ComponentActivity() {
         if (state.serviceStatus == G1ServiceCommon.ServiceStatus.PERMISSION_REQUIRED) {
             if (!autoPromptShown) {
                 autoPromptShown = true
-                runWithPermissions { }
+                runWithPermissions("autoPrompt") { }
             }
         } else {
             autoPromptShown = false
@@ -225,17 +237,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun runWithPermissions(action: () -> Unit) {
+    private fun runWithPermissions(trigger: String, action: () -> Unit) {
         val intent = PermissionHelper.createPermissionIntent(this)
         if (intent == null) {
+            Log.d(TAG, "Permission helper intent unavailable; executing immediately (trigger=$trigger)")
             action()
             return
         }
         if (pendingPermissionAction == null) {
+            Log.i(TAG, "Launching permission helper intent (trigger=$trigger)")
             pendingPermissionAction = action
             permissionLauncher.launch(intent)
+        } else {
+            Log.d(TAG, "Pending permission action already queued; ignoring trigger=$trigger")
         }
     }
+
+    private fun runWithPermissions(action: () -> Unit) = runWithPermissions("unspecified", action)
 
     private fun hasBluetoothPermissions(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
@@ -247,13 +265,45 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestBluetoothPermissions() {
+    private fun requestBluetoothPermissions(trigger: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Log.i(TAG, "Requesting Bluetooth runtime permissions (trigger=$trigger)")
             ActivityCompat.requestPermissions(this, BLUETOOTH_PERMISSIONS, REQUEST_CODE_BLUETOOTH)
         }
     }
 
+    private fun requestBluetoothPermissions() = requestBluetoothPermissions("unknown")
+
+    private fun bindServiceIfPossible(trigger: String) {
+        val hasPermissions = hasBluetoothPermissions()
+        Log.d(
+            TAG,
+            "bindServiceIfPossible(trigger=$trigger, hasPermissions=$hasPermissions, serviceBound=$serviceBound)"
+        )
+        if (hasPermissions) {
+            if (!serviceBound) {
+                serviceBound = repository.bindService()
+                Log.i(
+                    TAG,
+                    if (serviceBound) {
+                        "Service bind succeeded (trigger=$trigger)"
+                    } else {
+                        "Service bind failed (trigger=$trigger)"
+                    }
+                )
+            } else {
+                Log.d(TAG, "Service already bound (trigger=$trigger)")
+            }
+        } else {
+            Log.w(TAG, "Missing Bluetooth permissions; requesting (trigger=$trigger)")
+            requestBluetoothPermissions(trigger)
+        }
+    }
+
+    private fun bindServiceIfPossible() = bindServiceIfPossible("unknown")
+
     private companion object {
+        private const val TAG = "MainActivity"
         private const val REQUEST_CODE_BLUETOOTH = 0x42
         private val BLUETOOTH_PERMISSIONS = arrayOf(
             Manifest.permission.BLUETOOTH_CONNECT,
