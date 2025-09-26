@@ -10,6 +10,8 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
 
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Legacy location access for pre-Android 12 scanning -->
@@ -24,13 +26,12 @@
         android:name=".G1HubApplication"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.G1Hub"
+        android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
         tools:targetApi="31" >
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleInstance"
-            android:theme="@style/Theme.G1Hub">
+            android:launchMode="singleInstance">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -39,12 +40,10 @@
         <activity
             android:name=".CrashActivity"
             android:exported="false"
-            android:process=":crash"
-            android:theme="@style/Theme.G1Hub" />
+            android:process=":crash" />
         <activity
             android:name=".permissions.PermissionActivity"
-            android:exported="false"
-            android:theme="@style/Theme.G1Hub" />
+            android:exported="false" />
     </application>
 
 </manifest>

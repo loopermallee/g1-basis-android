@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.annotation.AttrRes
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
@@ -18,6 +19,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.color.MaterialColors
 import dagger.hilt.android.AndroidEntryPoint
 import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.databinding.ActivityMainBinding
@@ -171,7 +173,10 @@ class MainActivity : ComponentActivity() {
         )
         binding.textServiceStatus.text = serviceStatusText
         binding.textServiceStatus.setTextColor(
-            ContextCompat.getColor(this, serviceStatusColor(state.serviceStatus))
+            MaterialColors.getColor(
+                binding.root,
+                serviceStatusColorAttr(state.serviceStatus)
+            )
         )
 
         binding.progressScanning.isVisible = state.scanning
@@ -211,12 +216,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun serviceStatusColor(status: G1ServiceCommon.ServiceStatus): Int {
+    @AttrRes
+    private fun serviceStatusColorAttr(status: G1ServiceCommon.ServiceStatus): Int {
         return when (status) {
-            G1ServiceCommon.ServiceStatus.ERROR -> R.color.telemetry_error
+            G1ServiceCommon.ServiceStatus.ERROR ->
+                com.google.android.material.R.attr.colorError
             G1ServiceCommon.ServiceStatus.READY,
-            G1ServiceCommon.ServiceStatus.LOOKED -> R.color.telemetry_success
-            else -> R.color.telemetry_info
+            G1ServiceCommon.ServiceStatus.LOOKED ->
+                com.google.android.material.R.attr.colorPrimary
+            else -> com.google.android.material.R.attr.colorOnSurfaceVariant
         }
     }
 

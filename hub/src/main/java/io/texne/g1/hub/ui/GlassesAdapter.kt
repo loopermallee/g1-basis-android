@@ -3,7 +3,7 @@ package io.texne.g1.hub.ui
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.content.ContextCompat
+import androidx.annotation.AttrRes
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
@@ -13,6 +13,7 @@ import io.texne.g1.basis.client.G1ServiceCommon
 import io.texne.g1.hub.R
 import io.texne.g1.hub.databinding.ItemGlassesBinding
 import io.texne.g1.hub.model.Repository
+import com.google.android.material.color.MaterialColors
 
 class GlassesAdapter(
     private val listener: GlassesActionListener
@@ -57,7 +58,10 @@ class GlassesAdapter(
             )
             binding.textGlassesStatus.text = statusText
             binding.textGlassesStatus.setTextColor(
-                ContextCompat.getColor(context, statusColorRes(snapshot.status))
+                MaterialColors.getColor(
+                    binding.root,
+                    statusColorAttr(snapshot.status)
+                )
             )
 
             binding.textGlassesBattery.text = context.getString(
@@ -126,11 +130,14 @@ class GlassesAdapter(
         }
     }
 
-    private fun statusColorRes(status: G1ServiceCommon.GlassesStatus): Int {
+    @AttrRes
+    private fun statusColorAttr(status: G1ServiceCommon.GlassesStatus): Int {
         return when (status) {
-            G1ServiceCommon.GlassesStatus.CONNECTED -> R.color.telemetry_success
-            G1ServiceCommon.GlassesStatus.ERROR -> R.color.telemetry_error
-            else -> R.color.telemetry_info
+            G1ServiceCommon.GlassesStatus.CONNECTED ->
+                com.google.android.material.R.attr.colorPrimary
+            G1ServiceCommon.GlassesStatus.ERROR ->
+                com.google.android.material.R.attr.colorError
+            else -> com.google.android.material.R.attr.colorOnSurfaceVariant
         }
     }
 
