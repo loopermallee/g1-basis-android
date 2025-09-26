@@ -10,11 +10,21 @@
     android:paddingBottom="16dp"
     android:clipToPadding="false">
 
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        style="@style/Widget.BOF4.Toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:layout_marginBottom="16dp"
+        app:title="@string/app_name" />
+
     <TextView
         android:id="@+id/textServiceStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+        android:fontFamily="serif"
+        android:letterSpacing="0.02"
         android:textColor="?attr/colorOnSurface"
         android:text="@string/service_status_unknown" />
 
@@ -24,6 +34,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:indeterminate="true"
+        android:indeterminateTint="@color/kilrogg_secondary"
         android:visibility="gone"
         android:paddingTop="8dp"
         android:paddingBottom="8dp" />
@@ -33,6 +44,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.BodyLarge"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/live_data_status_unknown" />
 
@@ -42,6 +54,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/live_data_glasses_unknown" />
 
@@ -56,7 +69,7 @@
 
         <Button
             android:id="@+id/buttonScan"
-            style="@style/Widget.Material3.Button"
+            style="@style/Widget.EyeOfKilrogg.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -68,7 +81,7 @@
 
         <Button
             android:id="@+id/buttonBondedConnect"
-            style="@style/Widget.Material3.Button"
+            style="@style/Widget.EyeOfKilrogg.Button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -80,6 +93,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="@color/telemetry_error"
         android:visibility="gone"
         android:text="" />
@@ -90,6 +104,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="@string/header_glasses" />
 
@@ -108,6 +123,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/glasses_empty"
         android:visibility="gone" />
@@ -118,6 +134,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="@string/header_telemetry" />
 
@@ -136,6 +153,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_entries_empty"
         android:visibility="gone" />
@@ -146,6 +164,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="@string/header_telemetry_log" />
 
@@ -164,6 +183,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_logs_empty"
         android:visibility="gone" />

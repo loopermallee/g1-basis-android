@@ -4,7 +4,10 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="12dp"
-    android:background="?attr/selectableItemBackground"
+    android:background="@drawable/bg_panel"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true"
     android:layout_marginBottom="8dp"
     android:layout_marginTop="8dp"
     android:layout_marginEnd="4dp"
@@ -16,6 +19,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="--" />
 
@@ -25,6 +29,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="@string/glasses_status_format" />
 
@@ -34,6 +39,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/glasses_battery_format" />
 
@@ -43,6 +49,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/glasses_signal_format" />
 
@@ -52,6 +59,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/glasses_rssi_format" />
 
@@ -61,6 +69,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/glasses_retry_count" />
 
@@ -70,6 +79,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:visibility="gone"
         android:text="@string/glasses_retry_countdown" />
@@ -83,7 +93,7 @@
 
         <Button
             android:id="@+id/buttonRetryNow"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@style/Widget.EyeOfKilrogg.Button.Outlined"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/glasses_button_retry_now"
@@ -91,7 +101,7 @@
 
         <Button
             android:id="@+id/buttonCancelRetry"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            style="@style/Widget.EyeOfKilrogg.Button.Outlined"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
@@ -100,7 +110,7 @@
 
         <Button
             android:id="@+id/buttonConnect"
-            style="@style/Widget.Material3.Button"
+            style="@style/Widget.EyeOfKilrogg.Button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"

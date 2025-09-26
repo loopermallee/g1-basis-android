@@ -8,13 +8,17 @@
     android:layout_marginEnd="4dp"
     android:layout_marginTop="8dp"
     android:layout_marginBottom="8dp"
-    android:background="?attr/selectableItemBackground">
+    android:background="@drawable/bg_panel"
+    android:foreground="?attr/selectableItemBackground"
+    android:clickable="true"
+    android:focusable="true">
 
     <TextView
         android:id="@+id/textTelemetryName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="--" />
 
@@ -24,6 +28,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurface"
         android:text="@string/telemetry_status_format" />
 
@@ -33,6 +38,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_eye_status_format" />
 
@@ -42,6 +48,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_eye_status_format" />
 
@@ -51,6 +58,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/glasses_battery_format" />
 
@@ -60,6 +68,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_signal_detail" />
 
@@ -69,6 +78,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_retry_count" />
 
@@ -78,6 +88,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+        android:fontFamily="serif"
         android:textColor="?attr/colorOnSurfaceVariant"
         android:text="@string/telemetry_updated_format" />
 
